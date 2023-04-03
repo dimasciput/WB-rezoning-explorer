@@ -22,6 +22,7 @@ import {
   checkIncluded,
   getMultiplierByUnit,
   resourceList,
+  zoneTypesList,
   apiResourceNameMap
 } from '../components/explore/panel-data';
 
@@ -125,6 +126,14 @@ export function ExploreProvider (props) {
     validator: (v) => availableResources.map((r) => r.name).includes(v)
   });
 
+  // Zone type context
+  const [availableZoneTypes, setAvailableZoneTypes] = useState(zoneTypesList);
+  const [selectedZoneType, setSelectedZoneType] = useQsState({
+    key: 'zoneId',
+    default: undefined,
+    validator: (v) => availableZoneTypes.map((r) => r.name).includes(v?.name)
+  });
+
   // Helper function to update resource list for the selected area.
   // Instead of using "selectedArea" from state, the area must be passed as a param
   // to avoid life cycle errors.
@@ -136,6 +145,9 @@ export function ExploreProvider (props) {
     const updatedList = resourceList.filter((r) => {
       // If no area is selected, return all resources
       if (!area) return true;
+
+      if ( !area.available_resources.includes( r.name ) )
+        return false;
 
       // If resource is not offshore, include it
       if (r.name !== RESOURCES.OFFSHORE) return true;
@@ -150,13 +162,11 @@ export function ExploreProvider (props) {
       // default to wind
       setSelectedResource(undefined);
     }
+
     setAvailableResources(
       updatedList
     );
   }
-
-  const [gridMode, setGridMode] = useState(false);
-  const [gridSize, setGridSize] = useState(GRID_OPTIONS[0]);
 
   const [tourStep, setTourStep] = useState(0);
 
@@ -167,6 +177,8 @@ export function ExploreProvider (props) {
 
   const [filteredLayerUrl, setFilteredLayerUrl] = useState(null);
   const [outputLayerUrl, setOutputLayerUrl] = useState(null);
+
+  const [filterString, setFilterString] = useState( "" );
 
   // Executed on page mount
   useEffect(() => {
@@ -253,7 +265,6 @@ export function ExploreProvider (props) {
         ...nextArea,
         bounds: newBounds
       };
-      setGridMode(true);
     }
 
     setSelectedArea(nextArea);
@@ -267,9 +278,9 @@ export function ExploreProvider (props) {
   const generateZones = async (filterString, weights, lcoe) => {
     showGlobalLoadingMessage(`Generating zones for ${selectedArea.name}, this may take a few minutes...`);
     fetchZones(
-      gridMode && gridSize,
       selectedArea,
       selectedResource,
+      selectedZoneType,
       filterString,
       weights,
       lcoe,
@@ -277,7 +288,48 @@ export function ExploreProvider (props) {
     );
   };
 
-  const updateFilteredLayer = (filterValues, weights, lcoe) => {
+  const getLayerFilterString = (filter) => {
+    const { id, active, input, isRange } = filter;
+
+    // Bypass inactive filters
+    if (!maskTypes.includes(input.type) &&
+        (!active || !checkIncluded(filter, selectedResource))) {
+      // Skip filters that are NOT mask and are inactive
+      return null;
+    } else if (maskTypes.includes(input.type) && active) {
+      // If this is an 'active' mask filter, we don't need to send to the api. Active here means include these areas
+      return null;
+    } else if (isRange) {
+      if (input.value.min === input.range[0] &&
+        input.value.max === input.range[1]) {
+        return null;
+      }
+    }
+
+    // Add accepted filter types to the query
+    if (input.type === SLIDER) {
+      const {
+        value: { min, max }
+      } = filter.input;
+
+      // App uses km but api expects values in meters
+      const multiplier = getMultiplierByUnit(filter.unit);
+      return `${id}=${min * multiplier},${max * multiplier}`;
+    } else if (input.type === BOOL) {
+      return `${id}=${filter.input.value}`;
+    } else if (input.type === MULTI) {
+      return input.value.length === input.options.length ? null : `${id}=${input.value.join(',')}`;
+    } else if (input.type === DROPDOWN || input.type === MULTI) {
+      return `${id}=${filter.input.value.join(',')}`;
+    } else {
+    // discard non-accepted filter types
+      /* eslint-disable-next-line */
+      console.error(`Filter ${id} type not supported by api, discarding`);
+      return null;
+    }
+  }
+
+  const updateFilterString = (filterValues) => {
     // Prepare a query string to the API based from filter values
     //
     const filterString = filterValues
@@ -323,12 +375,20 @@ export function ExploreProvider (props) {
       })
       .filter((x) => x)
       .join('&');
+    
+    setFilterString( filterString );
+    return filterString;
+  }
+
+  const updateFilteredLayer = (filterValues, weights, lcoe) => {
+
+    let filterString = updateFilterString( filterValues );
 
     // If area of country type, prepare country path string to add to URL
-    const countryPath = selectedArea.type === 'country' ? `${selectedArea.id}/` : '';
+    const countryPath = `${selectedArea.id}/`;
 
     // if area of country type, prepare resource path string to add to URL
-    const resourcePath = selectedArea.type === 'country' ? `${apiResourceNameMap[selectedResource]}/` : '';
+    const resourcePath = `${apiResourceNameMap[selectedResource]}/`;
 
     // Off-shore mask flag
     const offshoreWindMask = selectedResource === RESOURCES.OFFSHORE ? '&offshore=true' : '';
@@ -389,19 +449,25 @@ export function ExploreProvider (props) {
           selectedArea,
           selectedAreaId,
           setSelectedAreaId,
+
           availableResources,
           selectedResource,
           setSelectedResource,
 
-          gridMode,
-          setGridMode,
-          gridSize,
-          setGridSize,
+          availableZoneTypes,
+          selectedZoneType,
+          setSelectedZoneType,
 
           currentZones,
           generateZones,
 
+          filterString,
+          setFilterString,
+          updateFilterString,
+          getLayerFilterString,
+
           filteredLayerUrl,
+          setFilteredLayerUrl,
           updateFilteredLayer,
           outputLayerUrl,
           tourStep,

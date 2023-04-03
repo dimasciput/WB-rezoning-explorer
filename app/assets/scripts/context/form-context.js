@@ -10,10 +10,11 @@ import {
   hideGlobalLoading
 } from '../components/common/global-loading';
 import { apiResourceNameMap } from '../components/explore/panel-data';
+import { RESOURCES } from '../components/explore/panel-data';
 
 const FormContext = createContext({});
 export function FormProvider (props) {
-  const { selectedAreaId, selectedResource, currentZones } = useContext(ExploreContext);
+  const { selectedAreaId, selectedResource, selectedZoneType, currentZones } = useContext(ExploreContext);
   const [inputTouched, setInputTouched] = useState(true);
   const [zonesGenerated, setZonesGenerated] = useState(false);
 
@@ -22,6 +23,9 @@ export function FormProvider (props) {
   );
   const [showSelectResourceModal, setShowSelectResourceModal] = useState(
     !selectedResource
+  );
+  const [showSelectZoneTypeModal, setShowSelectZoneTypeModal] = useState(
+    !selectedZoneType
   );
 
   const [filtersList, dispatchFiltersList] = useReducer(
@@ -42,6 +46,10 @@ export function FormProvider (props) {
     lcoeReducer,
     initialApiRequestState
   );
+  const visible_filter = selectedResource == RESOURCES.SOLAR ? "f_gsa_pvout" : "f_gwa_speed_100";
+  let defaultFiltersVisibility = {};
+  defaultFiltersVisibility[visible_filter] = true;
+  const [filtersVisibility, setFiltersVisibility] = useState(defaultFiltersVisibility);
 
   // this is lazy programming for fire off the filters fetch once
   let ff = false;
@@ -50,17 +58,18 @@ export function FormProvider (props) {
   useEffect(() => {
     setShowSelectAreaModal(!selectedAreaId);
     setShowSelectResourceModal(!selectedResource);
+    setShowSelectZoneTypeModal(!selectedZoneType);
 
-    if (selectedResource) {
+    if (selectedAreaId && selectedResource && selectedZoneType) {
       // only fetch filters once, after we have resources
       if (!ff) {
-        fetchFilters(dispatchFiltersList);
+        fetchFilters(selectedResource, dispatchFiltersList);
         ff = true;
       }
 
       fetchFilterRanges(selectedAreaId, selectedResource, dispatchFilterRanges);
     }
-  }, [selectedAreaId, selectedResource]);
+  }, [selectedAreaId, selectedResource, selectedZoneType]);
 
   useEffect(() => {
     fetchWeights(dispatchWeightsList);
@@ -93,9 +102,10 @@ export function FormProvider (props) {
             setZonesGenerated,
             showSelectAreaModal,
             setShowSelectAreaModal,
-            showSelectResourceModal,
-            setShowSelectResourceModal
-
+            showSelectResourceModal, setShowSelectResourceModal,
+            showSelectZoneTypeModal, setShowSelectZoneTypeModal,
+            filtersVisibility,
+            setFiltersVisibility,
           }
         }
       >

@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useContext, useEffect } from 'react';
 import T from 'prop-types';
+import styled from 'styled-components';
 
 import {
   FormWrapper,
@@ -14,13 +15,50 @@ import { Accordion, AccordionFold, AccordionFoldTrigger } from '../../../compone
 import Heading from '../../../styles/type/heading';
 import { makeTitleCase } from '../../../styles/utils/general';
 
-import InfoButton from '../../common/info-button';
 import { FormSwitch } from '../../../styles/form/switch';
-import { INPUT_CONSTANTS } from '../panel-data';
+import { INPUT_CONSTANTS, RESOURCES, apiResourceNameMap } from '../panel-data';
 
 import FormInput from './form-input';
+import Dropdown from '../../common/dropdown';
 
-const { BOOL } = INPUT_CONSTANTS;
+import Button from '../../../styles/button/button';
+
+import MapContext from '../../../context/map-context'
+import ExploreContext from '../../../context/explore-context'
+import FormContext from '../../../context/form-context'
+
+import config from '../../../config';
+
+const {
+  BOOL,
+} = INPUT_CONSTANTS;
+
+
+const DropdownWide = styled(Dropdown)`
+max-width: 600px;
+background: rgba(0,0,0,0.8);
+color: white;
+`;
+
+const StyledOptionHeadline = styled(OptionHeadline)`
+display: grid;
+grid-template-columns: 1fr repeat(0.05rem, 3);
+gap: 0.5rem;
+> ${PanelOptionTitle} {
+  grid-column-start: 1;
+  inline-size: 100%;
+  word-break: break-word;
+}
+> ${Button}.info-button {
+  grid-column-start: 2;
+}
+> ${FormSwitch} {
+  grid-column-start: 3;
+}
+> ${Button}.layer-visibility-button {
+  grid-column-start: 4;
+}
+`;
 
 /* Filters form
  * @param outputFilters is an array of shape
@@ -37,11 +75,135 @@ function FiltersForm (props) {
     checkIncluded,
     resource,
     active,
-    disabled
+    disabled,
+    selectedArea,
   } = props;
 
+  const {
+    map,
+  } = useContext(MapContext);
+
+  const {
+    getLayerFilterString,
+  } = useContext(ExploreContext);
+
+  const {
+    filtersVisibility,
+    setFiltersVisibility,
+  } = useContext(FormContext);
+
+  useEffect(() => {
+    if ( map )
+    {
+      filters.map( ([filter, _]) => filter )
+            .map( (filter) => updateFilter( filter ) );
+    }
+  }, [map, filters])
+
+  const updateFilter = ( filter ) => {
+    if ( map )
+    {
+      const oldLayer = map.getStyle().layers.find( layer => layer.id == filter.layer );
+      if ( oldLayer == undefined )
+        return;
+
+      // Check changed visibility
+      
+      const currentlyVisible = map.getLayoutProperty( filter.layer, 'visibility' ) === 'visible';
+
+      // Update the visibility
+      filtersVisibility[filter.layer] = filter.visible;
+      setFiltersVisibility( filtersVisibility );
+
+      if ( currentlyVisible !== filter.visible )
+      {
+        map.setLayoutProperty( filter.layer, 'visibility', filter.visible ? 'visible' : 'none' );
+        oldLayer.layout.visibility = filter.visible ? 'visible' : 'none';
+      }
+      
+      let layerSourceId = filter.layer + "_source";
+      const source = map.getSource( layerSourceId );
+
+      const filterString = getLayerFilterString( filter );
+      
+      // Off-shore mask flag
+      const offshoreWindMask = resource === RESOURCES.OFFSHORE ? '&offshore=true' : '';
+
+      let newLayerSrcPath = `${config.apiEndpoint}/layers/${selectedArea.id}/${apiResourceNameMap[resource]}/${filter.layer}/{z}/{x}/{y}.png?colormap=viridis&${filterString}&${offshoreWindMask}`;
+      
+      // Do not update the source if it hasn't changed
+      if ( Array.isArray( source.tiles ) && (newLayerSrcPath === source.tiles[0] ) )
+        return;
+
+      map.removeLayer( filter.layer );
+      map.removeSource( layerSourceId );
+      map.addSource( layerSourceId, {
+        type: source.type, 
+        tiles: [newLayerSrcPath], 
+        tileSize: source.tileSize,
+        data: source.data,
+        promoteId: source.promoteId,
+      } );
+      map.addLayer( oldLayer );
+    }
+  };
+
+  const onFilterVisibilityToggle = ( toggledFilter ) => {
+    let filterObjs = filters.map( ([filter, _]) => ({...filter}) );
+    if ( toggledFilter.visible )
+    {
+      // Hide the toggled filter and show the non visible layer that has the highest timestamp
+      const currentFilterStateArrIndex = filterObjs.findIndex((filter) => filter.id === toggledFilter.id);
+      filterObjs[currentFilterStateArrIndex].visible = false;
+      
+      // If the layer is an exclusive raster layer, we find the layer that was hidden last and then show it
+      let visibilityTimeStamps = filterObjs.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
+      let highestTimeStamp = Math.max( ...visibilityTimeStamps );
+
+      while ( highestTimeStamp > 0 )
+      {
+        let ind = filterObjs.findIndex((l) => l.visibilityTimeStamp === highestTimeStamp);
+        if ( ind !== -1 && !filterObjs[ind].visible )
+        {
+          filterObjs[ind].visible = true;
+          filterObjs[ind].visibilityTimeStamp = 0;
+          break;
+        }
+        else
+        {
+          highestTimeStamp--;
+        }
+      }
+    }
+    else
+    {
+      // Show the toggled filter and hide the currently visible layer and assign visiblity timestamp
+      const currentFilterStateArrIndex = filterObjs.findIndex((filter) => filter.id === toggledFilter.id);
+      let visibilityTimeStamps = filterObjs.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
+      let highestTimeStamp = Math.max( ...visibilityTimeStamps );
+
+      filterObjs = filterObjs.map( (f) => {
+        if (f.visible)
+        {
+          f.visible = false;
+          f.visibilityTimeStamp = highestTimeStamp + 1;
+        }
+        return f;
+      } );
+      filterObjs[currentFilterStateArrIndex].visible = true;
+    }
+
+    for ( let i = 0; i < filters.length; ++i )
+    {
+      if ( filters[i][0].visible != filterObjs[i].visible )
+      {
+        filters[i][1]( filterObjs[i] );
+      }
+    }
+  };
+
   return (
-    <>
+    <div>
       {disabled && (
         <EmptyState>
           Select Area and Resource to view and interact with input parameters.
@@ -139,36 +301,61 @@ function FiltersForm (props) {
                                 key={filter.name}
                                 hidden={!isFoldExpanded}
                               >
-                                <OptionHeadline>
+                                <StyledOptionHeadline>
                                   <PanelOptionTitle>
                                     {`${filter.name}`.concat(
                                       filter.unit ? ` (${filter.unit})` : ''
                                     )}
                                   </PanelOptionTitle>
                                   {filter.info && (
-                                    <InfoButton
-                                      info={filter.info}
-                                      id={filter.name}
-                                    >
-                                      Info
-                                    </InfoButton>
+                                    <DropdownWide
+                                      alignment='center'
+                                      direction='down'
+                                      triggerElement={
+                                        <Button
+                                          hideText
+                                          useIcon='circle-information'
+                                          className='info-button'
+                                        >
+                                          Info
+                                        </Button>
+                                      }>
+                                      <div>
+                                        Usage: &nbsp;
+                                        {filter.description}<br/>
+                                        Data Source: &nbsp;
+                                        <a href={filter.source_url} target="_blank"> {filter.source_url} </a>
+                                      </div>
+                                    </DropdownWide>
                                   )}
 
-                                  {filter.input.type === BOOL && (
-                                    <FormSwitch
-                                      hideText
-                                      name={`toggle-${filter.name.replace(
-                                        / /g,
-                                        '-'
-                                      )}`}
-                                      disabled={filter.disabled}
-                                      checked={filter.active}
-                                      onChange={switchOnChange}
-                                    >
-                                      Toggle filter
-                                    </FormSwitch>
-                                  )}
-                                </OptionHeadline>
+                                  <FormSwitch
+                                    hideText
+                                    name={`toggle-${filter.name.replace(
+                                      / /g,
+                                      '-'
+                                    )}`}
+                                    disabled={filter.disabled}
+                                    checked={filter.active}
+                                    onChange={switchOnChange}
+                                  >
+                                    Toggle filter
+                                  </FormSwitch>
+                                  <Button
+                                    variation='base-plain'
+                                    useIcon={filter.visible ? 'eye' : 'eye-disabled'}
+                                    title='toggle layer visibiliity'
+                                    className='layer-visibility-button'
+                                    hideText
+                                    onClick={ () => {
+                                          onFilterVisibilityToggle( filter );
+                                        }
+                                    }
+                                    visuallyDisabled={props.disabled}
+                                  >
+                                    <span>Toggle Layer Visibility</span>
+                                  </Button>
+                                </StyledOptionHeadline>
                                 <FormInput
                                   option={filter}
                                   onChange={inputOnChange}
@@ -184,7 +371,7 @@ function FiltersForm (props) {
           )}
         </Accordion>
       </FormWrapper>
-    </>
+    </div>
   );
 }
 

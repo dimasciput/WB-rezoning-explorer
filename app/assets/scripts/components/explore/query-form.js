@@ -28,6 +28,8 @@ import {
   lcoeQsSchema
 } from '../../context/qs-state-schema';
 
+import { exportSpatialFiltersCsv, exportEconomicParametersCsv, exportZoneWeightsCsv } from './export/csv';
+
 const { GRID_OPTIONS } = INPUT_CONSTANTS;
 
 const Subheadingstrong = styled.strong`
@@ -47,12 +49,18 @@ export const EditButton = styled(Button).attrs({
 const SubmissionSection = styled(PanelBlockFooter)`
   display: grid;
   grid-template-columns: 0.5fr 1fr;
-  gap: 0rem 1rem;
+  grid-template-rows: 1fr 1fr;
+  gap: 1.5rem 1rem;
 `;
 
 const PreAnalysisMessage = styled(Prose)`
   padding: 1rem 1.5rem;
   text-align: center;
+`;
+
+const ExportButton = styled(Button)`
+  grid-column-start: 1;
+  grid-column-end: 3;
 `;
 
 function QueryForm(props) {
@@ -372,6 +380,7 @@ function QueryForm(props) {
           filters={filtersInd}
           checkIncluded={checkIncluded}
           resource={resource}
+          selectedArea={area}
         />
         <LCOEForm
           id='economics-tab'
@@ -379,6 +388,7 @@ function QueryForm(props) {
           icon='disc-dollar'
           lcoe={lcoeInd}
           disabled={!area || !resource}
+          selectedArea={area}
         />
         <WeightsForm
           id='weights-tab'
@@ -388,9 +398,24 @@ function QueryForm(props) {
           disabled={!area || !resource}
           weightsLocks={weightsLocks}
           setWeightLocks={setWeightLocks}
+          selectedArea={area}
         />
       </TabbedBlockBody>
       <SubmissionSection>
+        <ExportButton
+            id="export-tour-target"
+            size='large'
+            style={{"width": "100%"}}
+            onClick={() => { 
+              exportSpatialFiltersCsv( area, filtersInd.map( f => f[0] ) ) 
+              exportEconomicParametersCsv( area, lcoeInd.map( f => f[0] ) )
+              exportZoneWeightsCsv( area, weightsInd.map( f => f[0] ) );
+            }}
+            variation='primary-raised-light'
+            useIcon='download'
+          >
+          Export parameters (.csv)
+        </ExportButton>
         <Button
           size='small'
           type='reset'
