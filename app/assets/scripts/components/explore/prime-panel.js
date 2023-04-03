@@ -10,6 +10,7 @@ import FormContext from '../../context/form-context';
 import ModalSelect from './modal-select';
 import { ModalHeadline } from '@devseed-ui/modal';
 import ModalSelectArea from './modal-select-area';
+import ModalSelectZoneType from './modal-select-zone-type';
 
 import Button from '../../styles/button/button';
 import InfoButton from '../common/info-button';
@@ -18,16 +19,14 @@ import { Card } from '../common/card-list';
 
 import QueryForm, { EditButton } from './query-form';
 import RasterTray from './raster-tray';
+import SubmitIssueTray from './submit-issue-tray';
 import { ZONES_BOUNDARIES_LAYER_ID } from '../common/mb-map/mb-map';
 import Heading, { Subheading } from '../../styles/type/heading';
 import { PanelBlock, PanelBlockBody, PanelBlockHeader } from '../common/panel-block';
 import { HeadOption, HeadOptionHeadline } from '../../styles/form/form';
 import Prose from '../../styles/type/prose';
-import GridSetter from './grid-setter';
-import { INPUT_CONSTANTS } from './panel-data';
 import { themeVal } from '../../styles/utils/general';
-
-const { GRID_OPTIONS } = INPUT_CONSTANTS;
+import { RESOURCES, BOUNDARIES } from "./panel-data";
 
 const PrimePanel = styled(Panel)`
   ${media.largeUp`
@@ -53,6 +52,11 @@ const RasterTrayWrapper = styled.div`
   }
 
   > .raster-tray {
+    grid-column: 1 /span 2;
+    ${({ show }) => !show && 'display: none;'}
+  }
+
+  > .submit-issue-tray {
     grid-column: 1 /span 2;
     ${({ show }) => !show && 'display: none;'}
 
@@ -83,18 +87,23 @@ function ExpMapPrimePanel (props) {
     selectedResource,
     selectedArea,
     setSelectedResource,
+
+    availableZoneTypes,
+    selectedZoneType,
+    setSelectedZoneType,
+
     tourStep,
     setTourStep,
-    gridMode,
-    setGridMode,
-    gridSize, setGridSize,
     updateFilteredLayer
   } = useContext(ExploreContext);
+
   const {
     showSelectAreaModal,
     setShowSelectAreaModal,
     showSelectResourceModal,
     setShowSelectResourceModal,
+    showSelectZoneTypeModal,
+    setShowSelectZoneTypeModal,
     setZonesGenerated,
     setInputTouched,
     filtersLists,
@@ -102,13 +111,30 @@ function ExpMapPrimePanel (props) {
     lcoeList,
     filterRanges
   } = useContext(FormContext);
-
+  
   const {
     map,
     mapLayers, setMapLayers
   } = useContext(MapContext);
 
   const [showRasterPanel, setShowRasterPanel] = useState(false);
+  const [showSubmitIssuePanel, setShowSubmitIssuePanel] = useState(false);
+
+  const onAreaEdit= () => {
+    setShowSelectAreaModal(true);
+    setShowSelectResourceModal(false);
+    setShowSelectZoneTypeModal(false);
+  };
+  const onResourceEdit = () => {
+    setShowSelectAreaModal(false);
+    setShowSelectResourceModal(true);
+    setShowSelectZoneTypeModal(false);
+  };
+  const onZoneTypeEdit = () => {
+    setShowSelectAreaModal(false);
+    setShowSelectResourceModal(false);
+    setShowSelectZoneTypeModal(true);
+  };
 
   return (
     <>
@@ -128,7 +154,7 @@ function ExpMapPrimePanel (props) {
             <span>Open Tour</span>
           </Button>,
 
-          <RasterTrayWrapper key='toggle-raster-tray' show={showRasterPanel}>
+          <RasterTrayWrapper key='toggle-raster-tray' id='toggle-raster-tray' show={showRasterPanel}>
             <InfoButton
               id='toggle-raster-tray'
               className='info-button'
@@ -148,37 +174,23 @@ function ExpMapPrimePanel (props) {
             <RasterTray
               show={showRasterPanel}
               className='raster-tray'
-              layers={mapLayers}
+              layers={filtersLists ? mapLayers.filter( layer => !filtersLists.map(filter => filter.layer).includes(layer.id) ) : mapLayers }
               resource={selectedResource}
-              onLayerKnobChange={(layer, knob) => {
-                // Check if changes are applied to zones layer, which
-                // have conditional paint properties due to filters
-                if (layer.id === ZONES_BOUNDARIES_LAYER_ID) {
-                  const paintProperty = map.getPaintProperty(
-                    layer.id,
-                    'fill-opacity'
-                  );
-
-                  // Zone boundaries layer uses a feature-state conditional
-                  // to detect hovering.
-                  // Here set the 3rd element of the array, which is the
-                  // non-hovered state value
-                  // to be the value of the knob
-                  paintProperty[3] = knob / 100;
-                  map.setPaintProperty(layer.id, 'fill-opacity', paintProperty);
-                } else {
-                  map.setPaintProperty(
-                    layer.id,
-                    layer.type === 'vector' ? 'fill-opacity' : 'raster-opacity',
-                    knob / 100
-                  );
-                }
-              }}
               onVisibilityToggle={(layer, visible) => {
                 if (visible) {
+                  // Show layer 
                   if (layer.type === 'raster' && !layer.nonexclusive) {
+                    let visibilityTimeStamps = mapLayers.map( l => (l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0) );
+                    let highestTimeStamp = Math.max( ...visibilityTimeStamps );
+
                     const ml = mapLayers.map((l) => {
                       if (l.type === 'raster' && !l.nonexclusive) {
+                        if ( l.visible && (l.id !== layer.id) )
+                        {
+                          // Add time stamp to indicate this layer was hidden last
+                          l.visibilityTimeStamp = highestTimeStamp + 1;
+                          highestTimeStamp++;
+                        }
                         map.setLayoutProperty(
                           l.id,
                           'visibility',
@@ -202,20 +214,44 @@ function ExpMapPrimePanel (props) {
                     ]);
                   }
                 } else {
+                  // Hide layer
                   map.setLayoutProperty(layer.id, 'visibility', 'none');
                   const ind = mapLayers.findIndex((l) => l.id === layer.id);
-                  setMapLayers([
+                  const ml = [
                     ...mapLayers.slice(0, ind),
                     {
                       ...layer,
                       visible: false
                     },
                     ...mapLayers.slice(ind + 1)
-                  ]);
+                  ];
+                  
+                  // If the layer is an exclusive raster layer, we find the layer that was hidden last and then show it
+                  if (layer.type === 'raster' && !layer.nonexclusive) {
+                    let visibilityTimeStamps = ml.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
+                    let highestTimeStamp = Math.max( ...visibilityTimeStamps );
+
+                    while ( highestTimeStamp > 0 )
+                    {
+                      let ind = ml.findIndex((l) => l.visibilityTimeStamp === highestTimeStamp);
+                      if ( ind !== -1 && !ml[ind].visible )
+                      {
+                        ml[ind].visible = true;
+                        ml[ind].visibilityTimeStamp = 0;
+                        map.setLayoutProperty(ml[ind].id, 'visibility', 'visible');
+                        break;
+                      }
+                      else
+                      {
+                        highestTimeStamp--;
+                      }
+                    }
+                  }
+                  setMapLayers( ml );
                 }
               }}
             />
-          </RasterTrayWrapper>
+          </RasterTrayWrapper>,
         ]}
         direction='left'
         onPanelChange={onPanelChange}
@@ -231,12 +267,10 @@ function ExpMapPrimePanel (props) {
               updateFilteredLayer={updateFilteredLayer}
               weightsList={weightsList}
               lcoeList={lcoeList}
-              gridMode={gridMode}
-              setGridMode={setGridMode}
-              gridSize={gridSize}
-              setGridSize={setGridSize}
-              onAreaEdit={() => setShowSelectAreaModal(true)}
-              onResourceEdit={() => setShowSelectResourceModal(true)}
+              selectedZoneType={selectedZoneType}
+              onAreaEdit={onAreaEdit}
+              onResourceEdit={onResourceEdit}
+              onZoneTypeEdit={onZoneTypeEdit}
               onInputTouched={(status) => {
                 setInputTouched(true);
               }}
@@ -254,7 +288,7 @@ function ExpMapPrimePanel (props) {
                     </Heading>
                     <EditButton
                       id='select-area-button'
-                      onClick={() => setShowSelectAreaModal(true)}
+                      onClick={onAreaEdit}
                       title='Edit Area'
                     >
                       Edit Area Selection
@@ -272,7 +306,7 @@ function ExpMapPrimePanel (props) {
                     </Subheading>
                     <EditButton
                       id='select-resource-button'
-                      onClick={() => setShowSelectResourceModal(true)}
+                      onClick={onResourceEdit}
                       title='Edit Resource'
                     >
                       Edit Resource Selection
@@ -285,23 +319,21 @@ function ExpMapPrimePanel (props) {
                     <Subheading>Zone Type and Size: </Subheading>
                     <Subheading variation='primary'>
                       <Subheadingstrong>
-                        {gridMode ? `${gridSize} km²` : 'Boundaries'}
+                        { selectedZoneType ? selectedZoneType.size > 0 ? `${selectedZoneType.size} km²` : 'Boundaries' : "Select Zone Type And Size"}
                       </Subheadingstrong>
                     </Subheading>
-
-                    <GridSetter
-                      gridOptions={GRID_OPTIONS}
-                      gridSize={gridSize}
-                      setGridSize={setGridSize}
-                      gridMode={gridMode}
-                      setGridMode={setGridMode}
-                      disableBoundaries={selectedResource === 'Off-Shore Wind'}
-                    />
+                    <EditButton
+                      id='select-zone-type-button'
+                      onClick={onZoneTypeEdit}
+                      title='Edit Zone Type'
+                    >
+                      Edit Zone Type Selection
+                    </EditButton>
                   </HeadOptionHeadline>
                 </HeadOption>
               </PanelBlockHeader>
               <PanelBlockBody>
-                {filterRanges && selectedArea && selectedResource ? (
+                {filterRanges && selectedArea && selectedResource && selectedZoneType ? (
                   <PreAnalysisMessage> Loading parameters... </PreAnalysisMessage>
                 ) : (
                   <PreAnalysisMessage>
@@ -314,14 +346,22 @@ function ExpMapPrimePanel (props) {
           )
         }
       />
+
+      <ModalSelectArea
+        revealed={showSelectAreaModal}
+        areas={areas}
+        closeButton={typeof selectedArea !== 'undefined'}
+        selectedResource={selectedResource}
+        showSelectAreaModal={showSelectAreaModal}
+        showSelectZoneTypeModal={showSelectZoneTypeModal}
+        setShowSelectAreaModal={setShowSelectAreaModal}
+        setSelectedAreaId={setSelectedAreaId}
+      />
+
       <ModalSelect
-        revealed={showSelectResourceModal && !showSelectAreaModal}
-        onOverlayClick={() => {
-          setShowSelectResourceModal(false);
-        }}
-        onCloseClick={() => {
-          setShowSelectResourceModal(false);
-        }}
+        revealed={ !showSelectAreaModal && showSelectResourceModal  }
+        onOverlayClick={() => setShowSelectResourceModal(false)}
+        onCloseClick={() => setShowSelectResourceModal(false)}
         data={availableResources}
         closeButton={typeof selectedResource !== 'undefined'}
         renderHeadline={() => (
@@ -350,13 +390,14 @@ function ExpMapPrimePanel (props) {
         nonScrolling
       />
 
-      <ModalSelectArea
-        areas={areas}
-        closeButton={typeof selectedArea !== 'undefined'}
-        selectedResource={selectedResource}
-        showSelectAreaModal={showSelectAreaModal}
-        setShowSelectAreaModal={setShowSelectAreaModal}
-        setSelectedAreaId={setSelectedAreaId}
+      <ModalSelectZoneType
+        revealed={!showSelectAreaModal && !showSelectResourceModal && showSelectZoneTypeModal}
+        availableZoneTypes={ availableZoneTypes.filter( zoneType =>
+            selectedResource !== RESOURCES.OFFSHORE || zoneType?.type !== BOUNDARIES
+        ) }
+        selectedZoneType={selectedZoneType}
+        setSelectedZoneType={setSelectedZoneType}
+        setShowSelectZoneTypeModal={setShowSelectZoneTypeModal}
       />
     </>
   );

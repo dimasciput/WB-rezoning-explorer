@@ -166,9 +166,29 @@ function ExploreZones (props) {
 
   const [sortId, setSortId] = useState('lcoe');
 
+  let minZoneScore = Math.min( ...currentZones.map( z => get(z, 'properties.summary.zone_score', 1.0) ) );
+  let maxZoneScore = Math.max( ...currentZones.map( z => get(z, 'properties.summary.zone_score', 0.0) ) );
+  minZoneScore = Math.floor( minZoneScore * 1000.0 ) / 1000.0;
+  maxZoneScore = Math.ceil( maxZoneScore * 1000.0 ) / 1000.0;
+
   return (
+    currentZones.length == 0 ?
+    <Card
+      size='large'
+    >
+      <CardIcon color='white'>
+        <img
+          alt='WBG Logo'
+          src='/assets/icons/warning-signs-svgrepo-com.svg'
+        />
+      </CardIcon>
+      <CardDetails>
+      Unfortunately, your analysis did not yield results. If this does not look correct, please double check the filter range but also the data layers you have activated, which might actually not have data for your country of interest.
+      </CardDetails>
+    </Card>
+    :
     <ZonesWrapper active={active}>
-      <ColorScale steps={10} heading='Weighted Zone Score' min={0} max={1} colorFunction={zoneScoreColor} />
+      <ColorScale steps={10} heading='Weighted Zone Score' minLabel={minZoneScore} maxLabel={maxZoneScore} colorFunction={zoneScoreColor} />
       {focusZone ? (
         <ZonesHeader>
           <Button onClick={() => setFocusZone(null)} size='small' useIcon={['chevron-left--small', 'before']}>
@@ -269,7 +289,6 @@ function ExploreZones (props) {
                         )
                       : 'Zone unavailable'}
                   </CardDetails>
-
                 </Card>
               );
             }}
