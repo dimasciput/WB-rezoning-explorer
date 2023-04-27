@@ -17,7 +17,7 @@ import InfoButton from '../common/info-button';
 
 import { Card } from '../common/card-list';
 
-import QueryForm, { EditButton } from './query-form';
+import QueryForm, {EditButton, ZoneTypeSizeSubheading} from './query-form';
 import RasterTray from './raster-tray';
 import SubmitIssueTray from './submit-issue-tray';
 import { ZONES_BOUNDARIES_LAYER_ID } from '../common/mb-map/mb-map';
@@ -82,11 +82,12 @@ function ExpMapPrimePanel (props) {
    */
   const {
     areas,
-    setSelectedAreaId,
     availableResources,
     selectedResource,
-    selectedArea,
     setSelectedResource,
+
+    selectedArea,
+    setSelectedAreaId,
 
     availableZoneTypes,
     selectedZoneType,
@@ -94,7 +95,8 @@ function ExpMapPrimePanel (props) {
 
     tourStep,
     setTourStep,
-    updateFilteredLayer
+    updateFilteredLayer,
+    currentZones,
   } = useContext(ExploreContext);
 
   const {
@@ -135,6 +137,12 @@ function ExpMapPrimePanel (props) {
     setShowSelectResourceModal(false);
     setShowSelectZoneTypeModal(true);
   };
+
+  React.useEffect(()=>{
+    if(!(Object.keys(currentZones?.data).length === 0)){
+      setShowRasterPanel(true)
+    }
+  },[currentZones?.data])
 
   return (
     <>
@@ -257,7 +265,7 @@ function ExpMapPrimePanel (props) {
         onPanelChange={onPanelChange}
         initialState={isLargeViewport()}
         bodyContent={
-          filtersLists && weightsList && lcoeList ? (
+          filtersLists && weightsList && lcoeList && filterRanges ? (
             <QueryForm
               firstLoad={firstLoad}
               area={selectedArea}
@@ -277,6 +285,9 @@ function ExpMapPrimePanel (props) {
               onSelectionChange={() => {
                 setZonesGenerated(false);
               }}
+              setSelectedAreaId={setSelectedAreaId}
+              setSelectedResource={setSelectedResource}
+              setSelectedZoneType={setSelectedZoneType}
             />
           ) : (
             <PanelBlock>
@@ -318,9 +329,9 @@ function ExpMapPrimePanel (props) {
                   <HeadOptionHeadline>
                     <Subheading>Zone Type and Size: </Subheading>
                     <Subheading variation='primary'>
-                      <Subheadingstrong>
-                        { selectedZoneType ? selectedZoneType.size > 0 ? `${selectedZoneType.size} km²` : 'Boundaries' : "Select Zone Type And Size"}
-                      </Subheadingstrong>
+                      <ZoneTypeSizeSubheading>
+                        { selectedZoneType ? selectedZoneType.size > 0 ? `${selectedZoneType.size} km²` : 'Boundaries' : 'Select Zone Type And Size'}
+                      </ZoneTypeSizeSubheading>
                     </Subheading>
                     <EditButton
                       id='select-zone-type-button'

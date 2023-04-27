@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import T from 'prop-types';
 import styled, { css } from 'styled-components';
 import get from 'lodash.get';
@@ -19,7 +19,6 @@ import { scaleLinear } from '@visx/scale';
 import colormap from 'colormap';
 import MakiIcon from '../maki-icon';
 
-import FormContext from '../../../context/form-context'
 
 const MapLegendSelf = styled.div`
   ${cardSkin}
@@ -111,10 +110,11 @@ const LegendFoldTrigger = styled(AccordionFoldTrigger)`
   }
 `;
 
-function RasterLegendItem({ mapLayers, filterRanges, filtersLists, currentZones }) {
+function RasterLegendItem({ mapLayers, filterRanges, filtersLists }) {
   const visibleRaster = mapLayers.filter(
     (layer) =>
       layer.type === 'raster' &&
+      layer.visible &&
       layer.id !== 'FILTERED_LAYER_ID' &&
       layer.id !== 'satellite'
   );
@@ -125,13 +125,13 @@ function RasterLegendItem({ mapLayers, filterRanges, filtersLists, currentZones 
 
   let rasterRange;
 
-  if (filterRanges.getData()[visibleRaster[0].id]) {
-    rasterRange = filterRanges.getData()[visibleRaster[0].id];
+  if (filterRanges[visibleRaster[0].id]) {
+    rasterRange = filterRanges[visibleRaster[0].id];
   } else if (visibleRaster[0].id === LCOE_LAYER_LAYER_ID) {
     // CurrentZones will be defined at this point
     // LCOE layer can only be made visible after zones are generated
     try {
-      rasterRange = filterRanges.getData().lcoe;
+      rasterRange = filterRanges.lcoe;
     } catch {
       // Current zones has been invalidated
       // Visibility of lcoe layer not updated in this render cycle
@@ -363,10 +363,6 @@ export default function MapLegend({
     minZoneScore = Math.floor( minZoneScore * 1000.0 ) / 1000.0;
     maxZoneScore = Math.ceil( maxZoneScore * 1000.0 ) / 1000.0;
   }
-
-  const { 
-    filtersVisibility
-  } = useContext(FormContext);
     
   return (
     <MapLegendSelf wide={landCoverVisible} id='map-legend' isExpanded={showMapLegend}>
@@ -409,18 +405,13 @@ export default function MapLegend({
         </LegendItemWrapper>
       )}
       <FilteredAreaLegendItem mapLayers={mapLayers} />
-      {
-      mapLayers.filter( (layer) => filtersVisibility[layer.id] )
-      .map( (layer) =>
-        <RasterLegendItem
-          mapLayers={[layer]}
-          filterRanges={filterRanges}
-          filtersLists={filtersLists}
-          currentZones={currentZones}
-          selectedResource={selectedResource}
-        />
-      )
-      }
+      <RasterLegendItem
+        mapLayers={mapLayers}
+        filterRanges={filterRanges}
+        filtersLists={filtersLists}
+        currentZones={currentZones}
+        selectedResource={selectedResource}
+      />
       <ZoneScoreLegendItem mapLayers={mapLayers} wide={landCoverVisible} minLabel={minZoneScore} maxLabel={maxZoneScore} />
     </MapLegendSelf>
   );
@@ -431,6 +422,5 @@ MapLegend.propTypes = {
   mapLayers: T.array.isRequired,
   filtersLists: T.array.isRequired,
   filterRanges: T.object.isRequired,
-  currentZones: T.object,
-  filtersVisibility: T.object,
+  currentZones: T.object
 };

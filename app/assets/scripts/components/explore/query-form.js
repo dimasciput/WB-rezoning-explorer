@@ -7,15 +7,18 @@ import {
   PanelBlock,
   PanelBlockHeader,
   PanelBlockBody,
-  PanelBlockFooter
+  PanelBlockFooter,
+  PanelBlockFooterRow
 } from '../common/panel-block';
 import TabbedBlockBody from '../common/tabbed-block-body';
 import Button from '../../styles/button/button';
 import Heading, { Subheading } from '../../styles/type/heading';
 
-import GridSetter from './grid-setter';
-
-import { INPUT_CONSTANTS, checkIncluded, apiResourceNameMap } from './panel-data';
+import {
+  INPUT_CONSTANTS,
+  checkIncluded,
+  apiResourceNameMap
+} from './panel-data';
 import { HeadOption, HeadOptionHeadline } from '../../styles/form/form';
 import { FiltersForm, WeightsForm, LCOEForm } from './form';
 import Prose from '../../styles/type/prose';
@@ -28,7 +31,14 @@ import {
   lcoeQsSchema
 } from '../../context/qs-state-schema';
 
-import { exportSpatialFiltersCsv, exportEconomicParametersCsv, exportZoneWeightsCsv } from './export/csv';
+import {
+  exportSpatialFiltersCsv,
+  exportEconomicParametersCsv,
+  exportZoneWeightsCsv
+} from './export/csv';
+
+import ModalUpload from './modal-upload-files';
+import CSVReader from './csv-upload';
 
 const { GRID_OPTIONS } = INPUT_CONSTANTS;
 
@@ -47,10 +57,15 @@ export const EditButton = styled(Button).attrs({
 `;
 
 const SubmissionSection = styled(PanelBlockFooter)`
-  display: grid;
-  grid-template-columns: 0.5fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  grid-row-gap: 15px;
+`;
+
+const ButtonRow = styled(PanelBlockFooterRow)`
+  display: flex;
+  width: 100%;
+  gap: 15px;
 `;
 
 const PreAnalysisMessage = styled(Prose)`
@@ -61,6 +76,15 @@ const PreAnalysisMessage = styled(Prose)`
 const ExportButton = styled(Button)`
   grid-column-start: 1;
   grid-column-end: 3;
+`;
+
+const ImportButton = styled(Button)`
+  grid-column-start: 1;
+  grid-column-end: 3;
+`;
+
+export const ZoneTypeSizeSubheading = styled(Subheadingstrong)`
+  margin-left: 5px;
 `;
 
 function QueryForm(props) {
@@ -76,25 +100,58 @@ function QueryForm(props) {
     onResourceEdit,
     onInputTouched,
     onSelectionChange,
-    gridMode,
-    setGridMode,
-    gridSize, setGridSize,
+    selectedZoneType,
+    onZoneTypeEdit,
+
+    setSelectedAreaId,
+    setSelectedResource,
+    setSelectedZoneType,
 
     firstLoad
   } = props;
 
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [activePanel, setActivePanel] = useState(0);
+  let sortedData = [];
+  let economicSortedData = [];
+
   /* Generate weights qs state variables
-  */
-  const weightsInd = weightsList.map(w => {
+   */
+
+  const weightsInd = weightsList.map((w) => {
     const [weight, setWeight] = useQsState(weightQsSchema(w));
     return [weight, setWeight];
   });
   const [weightsLocks, setWeightLocks] = useState({});
 
+  const handleFilterSorteData = (list) => {
+    if (checkIncluded(list, resource)) {
+      sortedData = [...sortedData, list];
+      const uniqueFilter = sortedData.reduce((filter, current) => {
+        if (!filter.find((item) => item?.id === current?.id)) {
+          filter.push(current);
+        }
+        return filter;
+      }, []);
+
+      sortedData = uniqueFilter;
+    }
+  };
+
+  const handleEconomicSortedData = (cost) => {
+    economicSortedData = [...economicSortedData, cost];
+    const uniqueFilter = economicSortedData.reduce((filter, current) => {
+      if (!filter.find((item) => item?.id === current?.id)) {
+        filter.push(current);
+      }
+      return filter;
+    }, []);
+    economicSortedData = uniqueFilter;
+  };
   /* Generate filters qs state variables */
   const filtersInd = filtersLists.map((f) => {
     const [filt, setFilt] = useQsState(
-      filterQsSchema(f, filterRanges.getData(), resource)
+      filterQsSchema(f, filterRanges, resource)
     );
     return [filt, setFilt];
   });
@@ -109,9 +166,7 @@ function QueryForm(props) {
         const updated = {
           ...object,
           input: {
-            ...initByType(object,
-              apiRange || {},
-              apiResourceNameMap[resource])
+            ...initByType(object, apiRange || {}, apiResourceNameMap[resource])
           }
         };
         setObject(updated);
@@ -122,9 +177,7 @@ function QueryForm(props) {
       setObject({
         ...base,
         input: {
-          ...initByType(base,
-            apiRange || {},
-            apiResourceNameMap[resource])
+          ...initByType(base, apiRange || {}, apiResourceNameMap[resource])
         },
         active: base.active === undefined ? true : base.active
       });
@@ -137,8 +190,11 @@ function QueryForm(props) {
   });
 
   const resetClick = () => {
-    if (filterRanges.isReady()) {
-      initialize(filtersLists, filtersInd, { reset: true, apiRange: filterRanges.getData() });
+    if (filterRanges) {
+      initialize(filtersLists, filtersInd, {
+        reset: true,
+        apiRange: filterRanges
+      });
     } else {
       initialize(filtersLists, filtersInd, { reset: true });
     }
@@ -163,20 +219,24 @@ function QueryForm(props) {
    * Call function to send values to api
    */
   const applyClick = () => {
-    const weightsValues = weightsInd.reduce((accum, [weight, _]) => ({
-      ...accum,
-      // The frontend deals with weights as 0 - 100
-      // Convert to 0 - 1 decimal value before sending to backend
-      [weight.id || weight.name]: castByFilterType(weight.input.type)(weight.input.value) / 100
-    }), {});
+    const weightsValues = weightsInd.reduce(
+      (accum, [weight, _]) => ({
+        ...accum,
+        // The frontend deals with weights as 0 - 100
+        // Convert to 0 - 1 decimal value before sending to backend
+        [weight.id || weight.name]:
+          castByFilterType(weight.input.type)(weight.input.value) / 100
+      }),
+      {}
+    );
 
     const lcoeValues = lcoeInd.reduce((accum, [cost, _]) => {
       const val = castByFilterType(cost.input.type)(cost.input.value);
-      return ({
+      return {
         ...accum,
         // Percentage values are served as decimal, rendered as integer 0 - 100
         [cost.id || cost.name]: cost.isPercentage ? val / 100 : val
-      });
+      };
     }, {});
 
     // Get filters and discard setting functions
@@ -190,16 +250,16 @@ function QueryForm(props) {
       // On first load, we do not reset. Set values from url
       // On subsequent load, set values from range because ranges have changed
       reset: !firstLoad.current,
-      apiRange: filterRanges.getData()
+      apiRange: filterRanges
     });
 
-    if (firstLoad.current && filterRanges.isReady()) {
+    if (firstLoad.current && filterRanges) {
       firstLoad.current = false;
     }
   }, [filterRanges, resource]);
 
   useEffect(onInputTouched, [area, resource]);
-  useEffect(onSelectionChange, [area, resource, gridSize]);
+  useEffect(onSelectionChange, [area, resource, selectedZoneType]);
 
   /* Update capacity factor options based on
    * what the current resource is
@@ -207,10 +267,14 @@ function QueryForm(props) {
   useEffect(() => {
     if (resource) {
       try {
-        const [capacity, setCapacity] = lcoeInd.find(([cost, _]) => cost.id === 'capacity_factor');
-        capacity.input.availableOptions = capacity.input.options[apiResourceNameMap[resource]];
+        const [capacity, setCapacity] = lcoeInd.find(
+          ([cost, _]) => cost.id === 'capacity_factor'
+        );
+        capacity.input.availableOptions =
+          capacity.input.options[apiResourceNameMap[resource]];
         capacity.input.value = capacity.input.availableOptions[0];
-        capacity.name = resource === 'Solar PV' ? 'Solar Unit Type' : 'Turbine Type';
+        capacity.name =
+          resource === 'Solar PV' ? 'Solar Unit Type' : 'Turbine Type';
         setCapacity(capacity);
       } catch (err) {
         /* eslint-disable-next-line */
@@ -218,6 +282,79 @@ function QueryForm(props) {
       }
     }
   }, [resource]);
+
+  const handleImportCSV = (results, fileInfo) => {
+    let indexDict = {};
+    results.data[0].map((i, index) => (indexDict[i] = index));
+    try {
+      if (
+        fileInfo.name.match(
+          /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-spatial-filters.*\.csv$/g
+        )
+      ) {
+        filtersInd.forEach(([filter, setFilter]) => {
+          let reqArray = results.data.find(
+            (it) => it[indexDict['id']] == filter.id
+          );
+          if (filter.input.type == 'multi-select') {
+            filter.input.value = reqArray[indexDict['value']]
+              .split(',')
+              .map((num) => +num);
+          } else if (filter.input.type == 'boolean') {
+            filter.input.value = reqArray[indexDict['value']];
+          } else {
+            filter.input.value.max = reqArray[indexDict['max_value']];
+            filter.input.value.min = reqArray[indexDict['min_value']];
+          }
+          setFilter(filter);
+        });
+      } else if (
+        fileInfo.name.match(
+          /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-economic-parameters.*\.csv$/g
+        )
+      ) {
+        lcoeInd.forEach(([filter, setFilter]) => {
+          let reqArray = results.data.find(
+            (it) => it[indexDict['id']] == filter.id
+          );
+          if (filter.input.type == 'dropdown') {
+            let selectedOption = filter.input.availableOptions.find(
+              (option) =>
+                JSON.parse(reqArray[indexDict['value']]).id == option.id
+            );
+            if (selectedOption) {
+              filter.input.value = selectedOption.id;
+            }
+          } else {
+            filter.input.value = reqArray[indexDict['value']];
+          }
+          setFilter(filter);
+        });
+      } else if (
+        fileInfo.name.match(
+          /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-zone-weights.*\.csv$/g
+        )
+      ) {
+        weightsInd.forEach(([filter, setFilter]) => {
+          let reqArray = results.data.find(
+            (it) => it[indexDict['id']] == filter.id
+          );
+          filter.input.value = reqArray[indexDict['value']];
+          setFilter(filter);
+        });
+      } else {
+        alert('invalid file');
+        return false;
+      }
+    } catch (error) {
+      // In case the app gets supplied a wrong csv file
+      console.error('Error reading file:', error);
+      alert('invalid file');
+      return false;
+    }
+    setShowUploadModal(false);
+    return true;
+  };
 
   /* Wait until elements have mounted and been parsed to render the query form */
   if (firstLoad.current) {
@@ -261,26 +398,23 @@ function QueryForm(props) {
             <HeadOptionHeadline>
               <Subheading>Zone Type and Size: </Subheading>
               <Subheading variation='primary'>
-                <Subheadingstrong>
-                  {gridMode ? `${gridSize} km²` : 'Boundaries'}
-                </Subheadingstrong>
+                <ZoneTypeSizeSubheading>
+                  { selectedZoneType ? selectedZoneType.size > 0 ? `${selectedZoneType.size} km²` : 'Boundaries' : 'Select Zone Type And Size'}
+                </ZoneTypeSizeSubheading>
               </Subheading>
 
-              <GridSetter
-                gridOptions={GRID_OPTIONS}
-                gridSize={gridSize}
-                setGridSize={setGridSize}
-                gridMode={gridMode}
-                setGridMode={setGridMode}
-                disableBoundaries={resource === 'Off-Shore Wind'}
-              />
+              <EditButton
+                id='select-zone-type-button'
+                onClick={onZoneTypeEdit}
+                title='Edit Zone Type'
+              >
+                Edit Zone Type Selection
+              </EditButton>
             </HeadOptionHeadline>
           </HeadOption>
         </PanelBlockHeader>
         <PanelBlockBody>
-          <PreAnalysisMessage>
-            Loading...
-          </PreAnalysisMessage>
+          <PreAnalysisMessage>Loading...</PreAnalysisMessage>
         </PanelBlockBody>
         <SubmissionSection>
           <Button
@@ -313,6 +447,8 @@ function QueryForm(props) {
       </PanelBlock>
     );
   }
+
+  const tabbedBlockBodyRef = React.createRef();
 
   return (
     <PanelBlock>
@@ -354,24 +490,23 @@ function QueryForm(props) {
           <HeadOptionHeadline>
             <Subheading>Zone Type and Size: </Subheading>
             <Subheading variation='primary'>
-              <Subheadingstrong>
-                {gridMode ? `${gridSize} km²` : 'Boundaries'}
-              </Subheadingstrong>
+              <ZoneTypeSizeSubheading>
+                { selectedZoneType ? selectedZoneType.size > 0 ? `${selectedZoneType.size} km²` : 'Boundaries' : 'Select Zone Type And Size'}
+              </ZoneTypeSizeSubheading>
             </Subheading>
 
-            <GridSetter
-              gridOptions={GRID_OPTIONS}
-              gridSize={gridSize}
-              setGridSize={setGridSize}
-              gridMode={gridMode}
-              setGridMode={setGridMode}
-              disableBoundaries={resource === 'Off-Shore Wind'}
-            />
+            <EditButton
+              id='select-zone-type-button'
+              onClick={onZoneTypeEdit}
+              title='Edit Zone Type'
+            >
+              Edit Zone Type Selection
+            </EditButton>
           </HeadOptionHeadline>
         </HeadOption>
       </PanelBlockHeader>
 
-      <TabbedBlockBody>
+      <TabbedBlockBody setActivePanel={setActivePanel}>
         <FiltersForm
           id='filters-tab'
           name='Filters'
@@ -381,6 +516,7 @@ function QueryForm(props) {
           checkIncluded={checkIncluded}
           resource={resource}
           selectedArea={area}
+          handleSorteData={handleFilterSorteData}
         />
         <LCOEForm
           id='economics-tab'
@@ -389,6 +525,7 @@ function QueryForm(props) {
           lcoe={lcoeInd}
           disabled={!area || !resource}
           selectedArea={area}
+          handleEconomicSortedData={handleEconomicSortedData}
         />
         <WeightsForm
           id='weights-tab'
@@ -402,47 +539,108 @@ function QueryForm(props) {
         />
       </TabbedBlockBody>
       <SubmissionSection>
-        <ExportButton
-            id="export-tour-target"
-            size='large'
-            style={{"width": "100%"}}
-            onClick={() => { 
-              exportSpatialFiltersCsv( area, filtersInd.map( f => f[0] ) ) 
-              exportEconomicParametersCsv( area, lcoeInd.map( f => f[0] ) )
-              exportZoneWeightsCsv( area, weightsInd.map( f => f[0] ) );
+        <ButtonRow>
+          <ExportButton
+            id='import-tour-target'
+            key='import-button'
+            size='small'
+            style={{ width: '50%', whiteSpace: 'normal' }}
+            onClick={() => {
+              setShowUploadModal(true);
+            }}
+            variation='primary-raised-light'
+            useIcon='upload'
+          >
+            Import
+          </ExportButton>
+          <ExportButton
+            id='export-tour-target'
+            key='export-button'
+            size='small'
+            style={{ width: '50%', whiteSpace: 'normal' }}
+            onClick={() => {
+              switch (activePanel) {
+                case 0:
+                  exportSpatialFiltersCsv(
+                    area,
+                    resource,
+                    selectedZoneType,
+                    sortedData
+                  );
+                  break;
+                case 1:
+                  exportEconomicParametersCsv(
+                    area,
+                    resource,
+                    selectedZoneType,
+                    economicSortedData
+                  );
+                  break;
+                case 2:
+                  exportZoneWeightsCsv(
+                    area,
+                    resource,
+                    selectedZoneType,
+                    weightsInd.map((f) => f[0])
+                  );
+                  break;
+              }
             }}
             variation='primary-raised-light'
             useIcon='download'
           >
-          Export parameters (.csv)
-        </ExportButton>
-        <Button
-          size='small'
-          type='reset'
-          disabled={!area || !resource}
-          onClick={resetClick}
-          variation='primary-raised-light'
-          useIcon='arrow-loop'
-        >
-          Reset
-        </Button>
-        <Button
-          id='generate-zones'
-          size='small'
-          type='submit'
-          disabled={!area || !resource}
-          onClick={applyClick}
-          variation='primary-raised-dark'
-          useIcon='tick--small'
-          title={
-            !area || !resource
-              ? 'Both area and resource must be set to generate zones'
-              : 'Generate Zones Analysis'
-          }
-        >
-          Generate Zones
-        </Button>
+            Export
+          </ExportButton>
+        </ButtonRow>
+        <ButtonRow>
+          <Button
+            size='small'
+            type='reset'
+            style={{ width: '40%' }}
+            disabled={!area || !resource}
+            onClick={resetClick}
+            variation='primary-raised-light'
+            useIcon='arrow-loop'
+          >
+            Reset
+          </Button>
+          <Button
+            id='generate-zones'
+            size='small'
+            type='submit'
+            style={{ width: '60%' }}
+            disabled={!area || !resource}
+            onClick={applyClick}
+            variation='primary-raised-dark'
+            useIcon='tick--small'
+            title={
+              !area || !resource
+                ? 'Both area and resource must be set to generate zones'
+                : 'Generate Zones Analysis'
+            }
+          >
+            Generate Zones
+          </Button>
+        </ButtonRow>
       </SubmissionSection>
+      <ModalUpload
+        revealed={showUploadModal}
+        onOverlayClick={() => {
+          setShowUploadModal(false);
+        }}
+        onCloseClick={() => {
+          setShowUploadModal(false);
+        }}
+        data={[]}
+        renderHeadline={() => <h1>Add file to upload</h1>}
+      >
+        <CSVReader
+          setSelectedAreaId={setSelectedAreaId}
+          setSelectedResource={setSelectedResource}
+          setSelectedZoneType={setSelectedZoneType}
+          handleImportCSV={handleImportCSV}
+        />
+      </ModalUpload>
     </PanelBlock>
   );
 }
@@ -450,6 +648,9 @@ function QueryForm(props) {
 QueryForm.propTypes = {
   area: T.object,
   resource: T.string,
+  setSelectedAreaId: T.func,
+  setSelectedResource: T.func,
+  setSelectedZoneType: T.func,
   filtersLists: T.array,
   weightsList: T.array,
   lcoeList: T.array,
@@ -459,10 +660,8 @@ QueryForm.propTypes = {
   onAreaEdit: T.func,
   onInputTouched: T.func,
   onSelectionChange: T.func,
-  gridMode: T.bool,
-  setGridMode: T.func,
-  gridSize: T.number,
-  setGridSize: T.func,
+  selectedZoneType: T.object,
+  onZoneTypeEdit: T.func,
   firstLoad: T.object
 };
 

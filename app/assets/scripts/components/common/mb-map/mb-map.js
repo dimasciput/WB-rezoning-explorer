@@ -347,7 +347,7 @@ const addInputLayersToMap = (map, layers, selectedArea, resource) => {
           id: layerId,
           type: 'symbol',
           source: `${layerId}_source`,
-          'source-layer': layer.id,
+          'source-layer': layer.id.endsWith('_vector') ? layer.id.substr( 0, layer.id.length - "_vector".length ) : layer.id,
           layout: {
             visibility: layer.visible ? 'visible' : 'none',
             'icon-image': symbol,
@@ -365,7 +365,7 @@ const addInputLayersToMap = (map, layers, selectedArea, resource) => {
           id: layerId,
           type: 'line',
           source: `${layerId}_source`,
-          'source-layer': layer.id,
+          'source-layer': layer.id.endsWith('_vector') ? layer.id.substr( 0, layer.id.length - "_vector".length ) : layer.id,
           layout: {
             visibility: layer.visible ? 'visible' : 'none'
           },
@@ -426,7 +426,7 @@ function MbMap (props) {
     setFocusZone
   } = useContext(MapContext);
 
-  const { filtersLists, filterRanges } = useContext(FormContext);
+  const { filtersLists, filterRanges, filtersListReducerRes } = useContext(FormContext);
 
   // Initialize map on mount
   useEffect(() => {
@@ -439,7 +439,7 @@ function MbMap (props) {
    * Initialize map layers on receipt of input layers
   */
   useEffect(() => {
-    if (map && inputLayers.isReady() && selectedArea) {
+    if (map && inputLayers.isReady() && selectedArea && filtersListReducerRes.isReady()) {
       const layers = inputLayers.getData();
       const initializedLayers = [
         ...layers.map(l => ({
@@ -470,7 +470,7 @@ function MbMap (props) {
 
       setMapLayers(mLayers);
     }
-  }, [map, selectedArea, selectedResource, inputLayers]);
+  }, [map, selectedArea, selectedResource, inputLayers, filtersListReducerRes]);
 
   // Watch window size changes
 
@@ -535,6 +535,13 @@ function MbMap (props) {
     if (!outputLayerUrl || !map) return;
 
     const style = map.getStyle();
+    let lcoe_layer_path_extension = "";
+    if ( maxLCOE?.input?.value?.min && maxLCOE?.input?.value?.max )
+    {
+      const lcoe_min = maxLCOE.input.value.min;
+      const lcoe_max = maxLCOE.input.value.max;
+      lcoe_layer_path_extension = `&lcoe_min=${lcoe_min}&lcoe_max=${lcoe_max}`;
+    }
 
     map.setStyle({
       ...style,
@@ -542,12 +549,12 @@ function MbMap (props) {
         ...style.sources,
         [LCOE_LAYER_SOURCE_ID]: {
           ...style.sources[LCOE_LAYER_SOURCE_ID],
-          tiles: [`${config.apiEndpoint}/lcoe/${outputLayerUrl}`]
+          tiles: [`${config.apiEndpoint}/lcoe/${outputLayerUrl}${lcoe_layer_path_extension}`]
         }
 
       }
     });
-  }, [outputLayerUrl]);
+  }, [outputLayerUrl, maxLCOE]);
 
   // Update zone boundaries on change
 
@@ -606,6 +613,14 @@ function MbMap (props) {
     ]
     );
   }, [maxZoneScore, maxLCOE, currentZones]);
+
+  const filterRangesWithMaxLcoe = (filterRanges, maxLCOE) => {
+    if ( !filterRanges || !maxLCOE || !maxLCOE?.input?.value?.min || !maxLCOE?.input?.value?.max )
+      return filterRanges;
+    filterRanges.lcoe = {min: maxLCOE.input.value.min, max: maxLCOE.input.value.max};
+    return filterRanges;
+  };
+
   return (
     <MapsContainer>
       {
@@ -622,7 +637,7 @@ function MbMap (props) {
             selectedResource={selectedResource}
             filtersLists={filtersLists}
             mapLayers={mapLayers}
-            filterRanges={filterRanges}
+            filterRanges={filterRangesWithMaxLcoe(filterRanges, maxLCOE)}
             currentZones={currentZones}
           />
         )

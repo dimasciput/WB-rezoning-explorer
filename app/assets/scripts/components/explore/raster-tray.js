@@ -13,6 +13,7 @@ import { apiResourceNameMap } from '../../components/explore/panel-data';
 import { ZONES_BOUNDARIES_LAYER_ID } from '../common/mb-map/mb-map';
 
 import MapContext from '../../context/map-context'
+import ExploreContext from '../../context/explore-context';
 
 const TrayWrapper = styled(ShadowScrollbar)`
   padding: 0.25rem;
@@ -169,6 +170,20 @@ LayerControl.propTypes = {
 function RasterTray (props) {
   const { show, layers, onVisibilityToggle, className, resource } = props;
 
+  const{
+    currentZones
+    } = useContext(ExploreContext);
+  
+    const [isVisible,seIsVisible] = React.useState(false)
+  
+  
+    React.useEffect(()=>{
+      if(!(Object.keys(currentZones?.data).length === 0) || isVisible){
+        seIsVisible(true)
+      }
+    },[currentZones?.data])
+  
+
   /*
    * Reduce layers into categories.
    * Layers with out a category will be stored under `undefined`
@@ -186,63 +201,18 @@ function RasterTray (props) {
   }, {});
 
   return (
-    <TrayWrapper
-      className={className}
-    >
-      <LayersWrapper
-        show={show}
-      >
+    <TrayWrapper className={className}>
+      <LayersWrapper show={show}>
         {
-          // Non categorized layers
-          categorizedLayers[undefined] && categorizedLayers[undefined].map(l => (
+          layers.filter( layer => !layer.id.endsWith( '_vector' ) && ( !layer.energy_type || layer.energy_type.includes(apiResourceNameMap[resource]) ) )
+                .map((l) => (
             <LayerControl
-              key={l.name}
+              key={l.id}
               {...l}
               onVisibilityToggle={onVisibilityToggle}
             />
-
           ))
         }
-
-        <Accordion
-          allowMultiple
-        >
-          {({ checkExpanded, setExpanded }) => {
-            return (
-              Object.entries(categorizedLayers)
-                .filter(cat => cat !== 'undefined')
-                .map(([category, layers], idx) => {
-                  return (category !== 'undefined' &&
-                 <AccordionFold
-                   key={category}
-                   isFoldExpanded={checkExpanded(idx)}
-                   setFoldExpanded={v => setExpanded(idx, v)}
-                   renderHeader={({ isFoldExpanded, setFoldExpanded }) => (
-                     <AccordionFoldTrigger
-                       isExpanded={isFoldExpanded}
-                       onClick={() => setFoldExpanded(!isFoldExpanded)}
-                     >
-                       <Heading size='small' variation='primary'>
-                         {makeTitleCase(category.replace(/_/g, ' '))}
-                       </Heading>
-                     </AccordionFoldTrigger>
-                   )}
-                   renderBody={({ isFoldExpanded }) => (
-                     layers.map(l => (
-                       <LayerControl
-                         key={l.id}
-                         {...l}
-                         onVisibilityToggle={onVisibilityToggle}
-                       />
-                     )
-                     )
-                   )}
-                 />
-                  );
-                }));
-          }}
-
-        </Accordion>
       </LayersWrapper>
     </TrayWrapper>
   );

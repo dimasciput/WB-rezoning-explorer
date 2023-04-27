@@ -77,20 +77,18 @@ function FiltersForm (props) {
     active,
     disabled,
     selectedArea,
+    handleSorteData
   } = props;
 
   const {
     map,
+    mapLayers,
+    setMapLayers,
   } = useContext(MapContext);
 
   const {
     getLayerFilterString,
   } = useContext(ExploreContext);
-
-  const {
-    filtersVisibility,
-    setFiltersVisibility,
-  } = useContext(FormContext);
 
   useEffect(() => {
     if ( map )
@@ -98,7 +96,24 @@ function FiltersForm (props) {
       filters.map( ([filter, _]) => filter )
             .map( (filter) => updateFilter( filter ) );
     }
-  }, [map, filters])
+  }, [map, filters]);
+
+  useEffect(() => {
+    if (map)
+    {
+      mapLayers.map( layer => {
+        let visible = map.getLayoutProperty( layer.id, 'visibility' ) === 'visible';
+        if ( layer.visible != visible )
+        {
+          map.setLayoutProperty( layer.id, 'visibility', layer.visible ? 'visible' : 'none' );
+        }
+      } );
+    }
+  }, [mapLayers]);
+
+  const getLayerVisibility = ( filter ) => {
+    return mapLayers.find( (layer) => layer.id == filter.layer )?.visible;
+  };
 
   const updateFilter = ( filter ) => {
     if ( map )
@@ -106,20 +121,6 @@ function FiltersForm (props) {
       const oldLayer = map.getStyle().layers.find( layer => layer.id == filter.layer );
       if ( oldLayer == undefined )
         return;
-
-      // Check changed visibility
-      
-      const currentlyVisible = map.getLayoutProperty( filter.layer, 'visibility' ) === 'visible';
-
-      // Update the visibility
-      filtersVisibility[filter.layer] = filter.visible;
-      setFiltersVisibility( filtersVisibility );
-
-      if ( currentlyVisible !== filter.visible )
-      {
-        map.setLayoutProperty( filter.layer, 'visibility', filter.visible ? 'visible' : 'none' );
-        oldLayer.layout.visibility = filter.visible ? 'visible' : 'none';
-      }
       
       let layerSourceId = filter.layer + "_source";
       const source = map.getSource( layerSourceId );
@@ -127,7 +128,7 @@ function FiltersForm (props) {
       const filterString = getLayerFilterString( filter );
       
       // Off-shore mask flag
-      const offshoreWindMask = resource === RESOURCES.OFFSHORE ? '&offshore=true' : '';
+      const offshoreWindMask = resource === RESOURCES.OFFSHORE ? 'offshore=true' : 'offshore=false';
 
       let newLayerSrcPath = `${config.apiEndpoint}/layers/${selectedArea.id}/${apiResourceNameMap[resource]}/${filter.layer}/{z}/{x}/{y}.png?colormap=viridis&${filterString}&${offshoreWindMask}`;
       
@@ -148,25 +149,30 @@ function FiltersForm (props) {
     }
   };
 
-  const onFilterVisibilityToggle = ( toggledFilter ) => {
-    let filterObjs = filters.map( ([filter, _]) => ({...filter}) );
-    if ( toggledFilter.visible )
+  const onFilterVisibilityToggle = ( toggledFilter ) => {    
+    const nonVectorMapLayers = mapLayers.filter( layer => !layer.id.endsWith('_vector') );
+    const vectorMapLayers = mapLayers.filter( layer => layer.id.endsWith('_vector') );
+
+    const toggledLayerId = toggledFilter.layer;
+    const toggledLayerIndex = nonVectorMapLayers.findIndex((layer) => layer.id === toggledLayerId);
+    let editedMapLayers = nonVectorMapLayers.map( l => l );
+    
+    if ( editedMapLayers[toggledLayerIndex].visible )
     {
       // Hide the toggled filter and show the non visible layer that has the highest timestamp
-      const currentFilterStateArrIndex = filterObjs.findIndex((filter) => filter.id === toggledFilter.id);
-      filterObjs[currentFilterStateArrIndex].visible = false;
+      editedMapLayers[toggledLayerIndex].visible = false;
       
       // If the layer is an exclusive raster layer, we find the layer that was hidden last and then show it
-      let visibilityTimeStamps = filterObjs.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
+      let visibilityTimeStamps = editedMapLayers.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
       let highestTimeStamp = Math.max( ...visibilityTimeStamps );
 
       while ( highestTimeStamp > 0 )
       {
-        let ind = filterObjs.findIndex((l) => l.visibilityTimeStamp === highestTimeStamp);
-        if ( ind !== -1 && !filterObjs[ind].visible )
+        let ind = editedMapLayers.findIndex((l) => l.visibilityTimeStamp === highestTimeStamp);
+        if ( ind !== -1 && !editedMapLayers[ind].visible )
         {
-          filterObjs[ind].visible = true;
-          filterObjs[ind].visibilityTimeStamp = 0;
+          editedMapLayers[ind].visible = true;
+          editedMapLayers[ind].visibilityTimeStamp = 0;
           break;
         }
         else
@@ -178,11 +184,10 @@ function FiltersForm (props) {
     else
     {
       // Show the toggled filter and hide the currently visible layer and assign visiblity timestamp
-      const currentFilterStateArrIndex = filterObjs.findIndex((filter) => filter.id === toggledFilter.id);
-      let visibilityTimeStamps = filterObjs.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
+      let visibilityTimeStamps = editedMapLayers.map( l => l?.visibilityTimeStamp ? l.visibilityTimeStamp : 0 );
       let highestTimeStamp = Math.max( ...visibilityTimeStamps );
 
-      filterObjs = filterObjs.map( (f) => {
+      editedMapLayers = editedMapLayers.map( (f) => {
         if (f.visible)
         {
           f.visible = false;
@@ -190,16 +195,17 @@ function FiltersForm (props) {
         }
         return f;
       } );
-      filterObjs[currentFilterStateArrIndex].visible = true;
+      editedMapLayers[toggledLayerIndex].visible = true;
     }
 
-    for ( let i = 0; i < filters.length; ++i )
-    {
-      if ( filters[i][0].visible != filterObjs[i].visible )
-      {
-        filters[i][1]( filterObjs[i] );
-      }
-    }
+    vectorMapLayers.map( layer => {
+      const rasterLayerName = layer.id.substr(0, layer.id.length - "_vector".length );
+      const indexInEdited = editedMapLayers.findIndex( raster => raster.id === rasterLayerName );
+      layer.visible = editedMapLayers[indexInEdited].visible;
+      editedMapLayers.push( layer );
+    } )
+
+    setMapLayers( editedMapLayers );
   };
 
   return (
@@ -295,6 +301,7 @@ function FiltersForm (props) {
                               }
                             });
                           }, [filter]);
+                          handleSorteData(filter)
                           return (
                             checkIncluded(filter, resource) && (
                               <PanelOption
@@ -305,7 +312,7 @@ function FiltersForm (props) {
                                   <PanelOptionTitle>
                                     {`${filter.name}`.concat(
                                       filter.unit ? ` (${filter.unit})` : ''
-                                    )}
+                                    )}  
                                   </PanelOptionTitle>
                                   {filter.info && (
                                     <DropdownWide
@@ -343,7 +350,7 @@ function FiltersForm (props) {
                                   </FormSwitch>
                                   <Button
                                     variation='base-plain'
-                                    useIcon={filter.visible ? 'eye' : 'eye-disabled'}
+                                    useIcon={getLayerVisibility(filter) ? 'eye' : 'eye-disabled'}
                                     title='toggle layer visibiliity'
                                     className='layer-visibility-button'
                                     hideText
