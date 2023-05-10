@@ -258,9 +258,9 @@ function RasterLegendItem({ mapLayers, filterRanges, filtersLists }) {
         </LegendLinear>
         {rasterRange && (
           <>
-            <InputLabel>{rasterRange.min.toFixed(1) || 0}</InputLabel>
+            <InputLabel>{rasterRange.min?.toFixed(1) || 0}</InputLabel>
             <InputLabel align='right'>
-              {rasterRange.max.toFixed(1) || 1}
+              {rasterRange.max?.toFixed(1) || 1}
             </InputLabel>
           </>
         )}
