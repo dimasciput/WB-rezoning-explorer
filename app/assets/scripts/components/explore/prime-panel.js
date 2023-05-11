@@ -156,6 +156,18 @@ function ExpMapPrimePanel (props) {
     }
   }, [currentZones?.data]);
 
+  React.useEffect(() => {
+    const availableZone = availableZoneTypes.filter(
+      (zoneType) =>
+        selectedResource !== RESOURCES.OFFSHORE || zoneType?.type !== BOUNDARIES
+    );
+    if (selectedResource === RESOURCES.OFFSHORE) {
+      const targetZoneType = availableZone.find((zoneType) => selectedZoneType && selectedZoneType.size === '0' && zoneType.size === '25')
+      if (targetZoneType) {
+        setSelectedZoneType(targetZoneType);
+    }
+    }
+  }, [selectedResource]);
   return (
     <>
       <PrimePanel
