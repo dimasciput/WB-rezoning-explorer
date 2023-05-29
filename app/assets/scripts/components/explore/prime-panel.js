@@ -128,6 +128,7 @@ function ExpMapPrimePanel (props) {
 
   const [showRasterPanel, setShowRasterPanel] = useState(false);
   const [showSubmitIssuePanel, setShowSubmitIssuePanel] = useState(false);
+  const [prevSelectedResource,setPrevSelectedResource] = useState(selectedResource)
 
   function calculateBoundingBoxArea(boundingBox) {
     // Create a polygon representing the bounding box
@@ -157,6 +158,7 @@ function ExpMapPrimePanel (props) {
   };
 
   React.useEffect(() => {
+    setPrevSelectedResource(selectedResource)
     if (!(Object.keys(currentZones?.data).length === 0)) {
       setShowRasterPanel(true);
       setMapLayers(mapLayers.map(layer => {
@@ -171,7 +173,13 @@ function ExpMapPrimePanel (props) {
       })
       );
     }
-  }, [currentZones?.data]);
+    else {
+      setShowRasterPanel(false);
+    }
+    if(selectedResource != prevSelectedResource ){
+      setShowRasterPanel(false);
+    }  
+  }, [currentZones?.data,selectedResource]);
 
   React.useEffect(() => {
     if (!selectedArea || !selectedResource) return;
