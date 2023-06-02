@@ -31,6 +31,7 @@ export const PanelBlockFooter = styled.footer`
   position: relative;
   z-index: 10;
   padding: ${glsp()} ${glsp(1.5)};
+  
 `;
 
 export const PanelBlockFooterRow = styled.footer`
