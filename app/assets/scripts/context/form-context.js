@@ -13,10 +13,12 @@ import { apiResourceNameMap } from '../components/explore/panel-data';
 import { RESOURCES } from '../components/explore/panel-data';
 
 const FormContext = createContext({});
+
 export function FormProvider (props) {
   const { selectedAreaId, selectedResource, selectedZoneType, currentZones } = useContext(ExploreContext);
   const [inputTouched, setInputTouched] = useState(true);
   const [zonesGenerated, setZonesGenerated] = useState(false);
+  const [importedFilters, setImportedFilters] = useState(null);
 
   const [showSelectAreaModal, setShowSelectAreaModal] = useState(
     !selectedAreaId
@@ -101,6 +103,7 @@ export function FormProvider (props) {
             setShowSelectAreaModal,
             showSelectResourceModal, setShowSelectResourceModal,
             showSelectZoneTypeModal, setShowSelectZoneTypeModal,
+            importedFilters, setImportedFilters
           }
         }
       >

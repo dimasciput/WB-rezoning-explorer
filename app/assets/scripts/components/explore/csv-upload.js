@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 
 import {
   useCSVReader,
@@ -8,6 +8,9 @@ import {
 
 import { zoneTypesList } from './panel-data';
 import { timeout } from '../../utils/utils';
+import FormContext from '../../context/form-context';
+import ExploreContext from "../../context/explore-context";
+
 
 const GREY = '#CCC';
 const GREY_LIGHT = 'rgba(255, 255, 255, 0.4)';
@@ -83,7 +86,7 @@ const styles = {
 };
 
 // eslint-disable-next-line react/prop-types
-export default function CSVReader({ setSelectedAreaId, setSelectedResource, setSelectedZoneType, selectedZoneType, handleImportCSV }) {
+export default function CSVReader({ handleImportCSV }) {
   const { CSVReader } = useCSVReader();
   const [zoneHover, setZoneHover] = useState(false);
   const [removeHoverColor, setRemoveHoverColor] = useState(
@@ -95,25 +98,9 @@ export default function CSVReader({ setSelectedAreaId, setSelectedResource, setS
       onUploadAccepted={async (results, fileInfo) => {
         setZoneHover(false);
         const successful = handleImportCSV(results, fileInfo);
-        await timeout(200);
         if (successful) {
-          const parsedFileName = fileInfo.name.match(/^WBG-REZoning-([A-Z]{3})-(.*?)\s(.*?)-(.*?)-(.*)-(spatial-filters|economic-parameters|zone-weights).*\.csv$/);
-          if(parsedFileName) {
-          const countryCode = parsedFileName[1];
-          const selectedResource = parsedFileName[2] + " " + parsedFileName[3];
-          const _selectedZoneType =parsedFileName[4] + "-" + parsedFileName[5];
-          setSelectedAreaId(countryCode);
-          setSelectedResource(selectedResource);
-          let zoneTypeObj = zoneTypesList.find(zoneType => zoneType.name === _selectedZoneType);
-          if (!zoneTypeObj) { zoneTypeObj = zoneTypesList[2]; }
-          try {
-            if (zoneTypeObj.name !== _selectedZoneType.name) {
-              setSelectedZoneType(zoneTypeObj);
-            }
-          } catch (e) {
-          }
+          setZoneHover(true);
         }
-      }
       }}
       onDragOver={(event) => {
         event.preventDefault();

@@ -17,7 +17,7 @@ import Heading, { Subheading } from '../../styles/type/heading';
 import {
   INPUT_CONSTANTS,
   checkIncluded,
-  apiResourceNameMap
+  apiResourceNameMap, zoneTypesList
 } from './panel-data';
 import { HeadOption, HeadOptionHeadline } from '../../styles/form/form';
 import { FiltersForm, WeightsForm, LCOEForm } from './form';
@@ -39,6 +39,10 @@ import {
 
 import ModalUpload from './modal-upload-files';
 import CSVReader from './csv-upload';
+import {
+  hideGlobalLoading,
+  showGlobalLoadingMessage
+} from "../common/global-loading";
 
 const { GRID_OPTIONS } = INPUT_CONSTANTS;
 
@@ -110,22 +114,38 @@ function QueryForm(props) {
     importingData,
     setImportingData,
 
+    csvFilterData,
+    setCsvFilterData,
+
+    activePanel,
+    setActivePanel,
+
     firstLoad
   } = props;
 
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [activePanel, setActivePanel] = useState(0);
   let sortedData = [];
   let economicSortedData = [];
 
   /* Generate weights qs state variables
    */
 
+  /* Generate filters qs state variables */
+  const filtersInd = filtersLists.map((f) => {
+    const [filt, setFilt] = useQsState(
+      filterQsSchema(f, filterRanges, resource)
+    );
+    return [filt, setFilt];
+  });
   const weightsInd = weightsList.map((w) => {
     const [weight, setWeight] = useQsState(weightQsSchema(w));
     return [weight, setWeight];
   });
   const [weightsLocks, setWeightLocks] = useState({});
+  const lcoeInd = lcoeList.map((c) => {
+    const [cost, setCost] = useQsState(lcoeQsSchema(c, resource));
+    return [cost, setCost];
+  });
 
   const handleFilterSorteData = (list) => {
     if (checkIncluded(list, resource)) {
@@ -151,13 +171,6 @@ function QueryForm(props) {
     }, []);
     economicSortedData = uniqueFilter;
   };
-  /* Generate filters qs state variables */
-  const filtersInd = filtersLists.map((f) => {
-    const [filt, setFilt] = useQsState(
-      filterQsSchema(f, filterRanges, resource)
-    );
-    return [filt, setFilt];
-  });
 
   const initialize = (baseList, destList, options) => {
     const { reset, apiRange } = options || {};
@@ -186,12 +199,6 @@ function QueryForm(props) {
       });
     });
   };
-
-  const lcoeInd = lcoeList.map((c) => {
-    const [cost, setCost] = useQsState(lcoeQsSchema(c, resource));
-    return [cost, setCost];
-  });
-
   const resetClick = () => {
     if (filterRanges) {
       initialize(filtersLists, filtersInd, {
@@ -248,19 +255,15 @@ function QueryForm(props) {
     updateFilteredLayer(filters, weightsValues, lcoeValues);
   };
   useEffect(() => {
-    /* if in the process of importing data then don't re-initialize */
-    if (importingData) {
-      setImportingData(false);
-      return;
-    }
-
     /* When filter ranges update we should reset to match ranges */
-    initialize(filtersLists, filtersInd, {
-      // On first load, we do not reset. Set values from url
-      // On subsequent load, set values from range because ranges have changed
-      reset: !firstLoad.current,
-      apiRange: filterRanges
-    });
+    if (!importingData) {
+      initialize(filtersLists, filtersInd, {
+        // On first load, we do not reset. Set values from url
+        // On subsequent load, set values from range because ranges have changed
+        reset: !firstLoad.current,
+        apiRange: filterRanges
+      });
+    }
 
     if (firstLoad.current && filterRanges) {
       firstLoad.current = false;
@@ -280,9 +283,9 @@ function QueryForm(props) {
           ([cost, _]) => cost.id === 'capacity_factor'
         );
         if (!importingData) {
-          capacity.input.availableOptions =
-            capacity.input.options[apiResourceNameMap[resource]];
-          capacity.input.value = capacity.input.availableOptions[0];
+          initialize(lcoeList, lcoeInd, {
+            reset: !firstLoad.current
+          });
         }
         capacity.name =
           resource === 'Solar PV' ? 'Solar Unit Type' : 'Turbine Type';
@@ -294,81 +297,151 @@ function QueryForm(props) {
     }
   }, [resource]);
 
-  const handleImportCSV = (results, fileInfo) => {
+  const parseFileName = (fileName) => {
+    const parsedFileName = fileName.match(/^WBG-REZoning-([A-Z]{3})-(.*?)\s(.*?)-(.*?)-(.*)-(spatial-filters|economic-parameters|zone-weights).*\.csv$/);
+    if (!parsedFileName) return null;
+    return {
+      countryCode: parsedFileName[1],
+      resource: parsedFileName[2] + ' ' + parsedFileName[3],
+      zoneType: parsedFileName[4] + '-' + parsedFileName[5]
+    };
+  };
+
+  const processCsvFilterData = () => {
     const indexDict = {};
-    setImportingData(true);
-    results.data[0].map((i, index) => (indexDict[i] = index));
+    csvFilterData.results.data[0].map((i, index) => (indexDict[i] = index));
     try {
       if (
-        fileInfo.name.match(
+        csvFilterData.fileInfo.name.match(
           /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-spatial-filters.*\.csv$/g
         )
       ) {
+        setActivePanel(0);
         filtersInd.forEach(([filter, setFilter]) => {
-          const reqArray = results.data.find(
-            (it) => it[indexDict['id']] == filter.id
+          const reqArray = csvFilterData.results.data.find(
+            (it) => it[indexDict.id] === filter.id
           );
           if (typeof reqArray === 'undefined') {
             return; // Skip this
           }
-          if (filter.input.type == 'multi-select') {
-            filter.input.value = reqArray[indexDict['value']]
+          if (typeof reqArray[indexDict.active] === 'boolean') {
+            filter.active = reqArray[indexDict.active];
+          } else if (reqArray[indexDict.active] !== '') {
+            filter.active = reqArray[indexDict.active] === 'true';
+          }
+          if (filter.input.type === 'multi-select') {
+            filter.input.value = reqArray[indexDict.value]
               .split(',')
               .map((num) => +num);
-          } else if (filter.input.type == 'boolean') {
-            filter.input.value = reqArray[indexDict['value']];
+          } else if (filter.input.type === 'boolean') {
+            filter.input.value = reqArray[indexDict.value];
           } else {
-            filter.input.value.max = parseFloat(reqArray[indexDict['max_value']]);
-            filter.input.value.min = parseFloat(reqArray[indexDict['min_value']]);
+            filter.input.value.max = parseFloat(reqArray[indexDict.max_value]);
+            filter.input.value.min = parseFloat(reqArray[indexDict.min_value]);
           }
           setFilter(filter);
         });
       } else if (
-        fileInfo.name.match(
+        csvFilterData.fileInfo.name.match(
           /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-economic-parameters.*\.csv$/g
         )
       ) {
+        setActivePanel(1);
         lcoeInd.forEach(([filter, setFilter]) => {
-          const reqArray = results.data.find(
-            (it) => it[indexDict['id']] == filter.id
+          const reqArray = csvFilterData.results.data.find(
+            (it) => it[indexDict.id] === filter.id
           );
-          if (filter.input.type == 'dropdown') {
+          if (filter.input.type === 'dropdown') {
             const selectedOption = filter.input.availableOptions.find(
               (option) =>
-                JSON.parse(reqArray[indexDict['value']]).id == option.id
+                JSON.parse(reqArray[indexDict.value]).id === option.id
             );
             if (selectedOption) {
               filter.input.value = selectedOption;
             }
           } else {
-            filter.input.value = reqArray[indexDict['value']];
+            filter.input.value = reqArray[indexDict.value];
           }
           setFilter(filter);
         });
       } else if (
-        fileInfo.name.match(
+        csvFilterData.fileInfo.name.match(
           /^WBG-REZoning-([A-Z]{3})-([^-]*)-(.*)-zone-weights.*\.csv$/g
         )
       ) {
+        setActivePanel(2);
         weightsInd.forEach(([filter, setFilter]) => {
-          const reqArray = results.data.find(
-            (it) => it[indexDict['id']] == filter.id
+          const reqArray = csvFilterData.results.data.find(
+            (it) => it[indexDict.id] === filter.id
           );
-          filter.input.value = reqArray[indexDict['value']];
+          filter.input.value = reqArray[indexDict.value];
           setFilter(filter);
         });
       } else {
-        alert('invalid file');
+        hideGlobalLoading();
+        alert('Invalid file');
+        setCsvFilterData(null);
+        setShowUploadModal(true);
         return false;
       }
     } catch (error) {
       // In case the app gets supplied a wrong csv file
       console.error('Error reading file:', error);
-      alert('invalid file');
-      setImportingData(false);
+      hideGlobalLoading();
+      alert('Invalid file');
+      setCsvFilterData(null);
+      setShowUploadModal(true);
       return false;
     }
     setShowUploadModal(false);
+    setCsvFilterData(null);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!csvFilterData && importingData) {
+      setTimeout(() => {
+        setImportingData(false);
+        hideGlobalLoading();
+      }, 1000);
+    }
+  }, [csvFilterData, importingData]);
+
+  useEffect(() => {
+    if (importingData && csvFilterData) {
+      const parsedFilename = parseFileName(csvFilterData.fileInfo.name);
+      if (area.gid !== parsedFilename.countryCode) {
+        setSelectedAreaId(parsedFilename.countryCode);
+        return;
+      }
+      if ((typeof resource === 'undefined' || resource !== parsedFilename.resource)) {
+        setSelectedResource(parsedFilename.resource);
+        return;
+      }
+      if ((typeof selectedZoneType === 'undefined' || selectedZoneType.name !== parsedFilename.zoneType)) {
+        let zoneTypeObj = zoneTypesList.find(zoneType => zoneType.name === parsedFilename.zoneType);
+        if (!zoneTypeObj) { zoneTypeObj = zoneTypesList[2]; }
+        setSelectedZoneType(zoneTypeObj);
+        return;
+      }
+      processCsvFilterData();
+    }
+  }, [importingData, csvFilterData, area, resource, selectedZoneType]);
+
+  const handleImportCSV = (results, fileInfo) => {
+    // Check country, resource, and type zone
+    const _csvFilterData = {
+      results: results,
+      fileInfo: fileInfo
+    };
+    const parsedFileName = parseFileName(fileInfo.name);
+    if (parsedFileName && parsedFileName.countryCode && parsedFileName.resource && parsedFileName.zoneType) {
+      showGlobalLoadingMessage('Importing CSV...');
+      setCsvFilterData(_csvFilterData);
+      setImportingData(true);
+    } else {
+      alert('Invalid file');
+    }
     return true;
   };
 
@@ -464,7 +537,6 @@ function QueryForm(props) {
     );
   }
 
-  const tabbedBlockBodyRef = React.createRef();
 
   return (
     <PanelBlock>
@@ -521,8 +593,8 @@ function QueryForm(props) {
           </HeadOptionHeadline>
         </HeadOption>
       </PanelBlockHeader>
-      
-      <TabbedBlockBody setActivePanel={setActivePanel}>
+
+      <TabbedBlockBody setActivePanel={setActivePanel} activePanel={activePanel}>
         <FiltersForm
           id='filters-tab'
           name='Filters'
@@ -556,7 +628,7 @@ function QueryForm(props) {
       </TabbedBlockBody>
       <SubmissionSection>
         <ButtonRow>
-        <ExportButton
+          <ExportButton
             id='export-tour-target'
             key='export-button'
             size='small'
@@ -590,7 +662,7 @@ function QueryForm(props) {
               }
             }}
             variation='primary-raised-light'
-            useIcon='download'
+            useIcon='upload'
           >
             Export
           </ExportButton>
@@ -603,7 +675,7 @@ function QueryForm(props) {
               setShowUploadModal(true);
             }}
             variation='primary-raised-light'
-            useIcon='upload'
+            useIcon='download'
           >
             Import
           </ExportButton>
@@ -651,10 +723,6 @@ function QueryForm(props) {
         renderHeadline={() => <h1>Add file to upload</h1>}
       >
         <CSVReader
-          setSelectedAreaId={setSelectedAreaId}
-          setSelectedResource={setSelectedResource}
-          setSelectedZoneType={setSelectedZoneType}
-          selectedZoneType={selectedZoneType}
           handleImportCSV={handleImportCSV}
         />
       </ModalUpload>
