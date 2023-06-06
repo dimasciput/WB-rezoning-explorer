@@ -103,7 +103,13 @@ function ExpMapPrimePanel (props) {
     updateFilteredLayer,
     currentZones,
     importingData,
-    setImportingData
+    setImportingData,
+
+    csvFilterData,
+    setCsvFilterData,
+
+    activePanel,
+    setActivePanel
   } = useContext(ExploreContext);
 
   const {
@@ -142,16 +148,19 @@ function ExpMapPrimePanel (props) {
   }
 
   const onAreaEdit = () => {
+    if (importingData) return;
     setShowSelectAreaModal(true);
     setShowSelectResourceModal(false);
     setShowSelectZoneTypeModal(false);
   };
   const onResourceEdit = () => {
+    if (importingData) return;
     setShowSelectAreaModal(false);
     setShowSelectResourceModal(true);
     setShowSelectZoneTypeModal(false);
   };
   const onZoneTypeEdit = () => {
+    if (importingData) return;
     setShowSelectAreaModal(false);
     setShowSelectResourceModal(false);
     setShowSelectZoneTypeModal(true);
@@ -372,6 +381,11 @@ function ExpMapPrimePanel (props) {
               setSelectedZoneType={setSelectedZoneType}
               importingData={importingData}
               setImportingData={setImportingData}
+              csvFilterData={csvFilterData}
+              setCsvFilterData={setCsvFilterData}
+
+              activePanel={activePanel}
+              setActivePanel={setActivePanel}
             />
           ) : (
             <PanelBlock>
@@ -451,7 +465,7 @@ function ExpMapPrimePanel (props) {
       />
 
       <ModalSelectArea
-        revealed={showSelectAreaModal}
+        revealed={showSelectAreaModal && !importingData}
         areas={areas}
         closeButton={typeof selectedArea !== 'undefined'}
         selectedResource={selectedResource}
@@ -462,7 +476,7 @@ function ExpMapPrimePanel (props) {
       />
 
       <ModalSelect
-        revealed={!showSelectAreaModal && showSelectResourceModal}
+        revealed={!showSelectAreaModal && showSelectResourceModal && !importingData}
         onOverlayClick={() => setShowSelectResourceModal(false)}
         onCloseClick={() => setShowSelectResourceModal(false)}
         data={availableResources}
@@ -494,7 +508,7 @@ function ExpMapPrimePanel (props) {
       />
 
       <ModalSelectZoneType
-        revealed={!showSelectAreaModal && !showSelectResourceModal && showSelectZoneTypeModal}
+        revealed={!showSelectAreaModal && !showSelectResourceModal && showSelectZoneTypeModal && !importingData}
         availableZoneTypes={availableZoneTypes}
         selectedZoneType={selectedZoneType}
         setSelectedZoneType={setSelectedZoneType}

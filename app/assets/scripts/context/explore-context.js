@@ -135,6 +135,9 @@ export function ExploreProvider (props) {
     validator: (v) => availableZoneTypes.map((r) => r.name).includes(v?.name)
   });
 
+  const [csvFilterData, setCsvFilterData] = useState(null);
+  const [activePanel, setActivePanel] = useState(0);
+
   // Helper function to update resource list for the selected area.
   // Instead of using "selectedArea" from state, the area must be passed as a param
   // to avoid life cycle errors.
@@ -157,11 +160,13 @@ export function ExploreProvider (props) {
       return typeof area.eez !== 'undefined';
     });
 
-    if (!updatedList.find(r => r.name === selectedResource)) {
-      // This means offshore was selcted from previous area
-      // But is not available for this country
-      // default to wind
-      setSelectedResource(undefined);
+    if (!importingData) {
+      if (!updatedList.find(r => r.name === selectedResource)) {
+        // This means offshore was selcted from previous area
+        // But is not available for this country
+        // default to wind
+        setSelectedResource(undefined);
+      }
     }
 
     setAvailableResources(
@@ -471,6 +476,12 @@ export function ExploreProvider (props) {
           setFilterString,
           updateFilterString,
           getLayerFilterString,
+
+          csvFilterData,
+          setCsvFilterData,
+
+          activePanel,
+          setActivePanel,
 
           filteredLayerUrl,
           setFilteredLayerUrl,
