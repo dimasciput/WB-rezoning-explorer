@@ -46,11 +46,9 @@ function ModalSelectArea (props) {
 
   const simplifyText = (text) => {
     // Remove accents from characters
-    const simplifiedText = text
+    return text
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
-    // Convert to lowercase and remove spaces
-    return simplifiedText.toLowerCase().replace(/\s/g, '');
   }
 
   return (
