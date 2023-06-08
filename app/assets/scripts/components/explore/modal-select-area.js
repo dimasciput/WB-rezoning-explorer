@@ -44,6 +44,15 @@ function ModalSelectArea (props) {
   const [areaType, setAreaType] = useState('country');
   const [searchValue, setSearchValue] = useState('');
 
+  const simplifyText = (text) => {
+    // Remove accents from characters
+    const simplifiedText = text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    // Convert to lowercase and remove spaces
+    return simplifiedText.toLowerCase().replace(/\s/g, '');
+  }
+
   return (
     <ModalSelect
       revealed={revealed}
@@ -73,7 +82,7 @@ function ModalSelectArea (props) {
         </HeadlineWrapper>
       )}
       filterCard={(card) =>
-        card.name.toLowerCase().includes(searchValue.toLowerCase())}
+        simplifyText(card.name).toLowerCase().includes(searchValue.toLowerCase())}
       renderCard={(area) => (
         <Card
           id={`area-${area.id}-card`}
