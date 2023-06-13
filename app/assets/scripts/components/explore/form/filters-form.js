@@ -301,7 +301,7 @@ function FiltersForm (props) {
                               }
                             });
                           }, [filter]);
-                          handleSorteData(filter)
+                          handleSorteData(filter);
                           return (
                             checkIncluded(filter, resource) && (
                               <PanelOption

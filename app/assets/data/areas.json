@@ -919,7 +919,8 @@
         "alpha2": "FJ",
         "name": "Fiji",
         "type": "country",
-        "bounds": "-183.09555054,-21.03111076,-178.2333374,-12.46233463",
+        "bounds": "183.40016693036438, -21.61290167131665, 174.2545074741929, -13.68941463642632",
+        "offshore_bounds": "-187.9,-25.9,-171.8,-10",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
@@ -956,6 +957,7 @@
         "name": "Faroe Islands",
         "type": "country",
         "bounds": "-7.683,61.394,-6.246,62.392",
+        "size": "xs",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
@@ -1135,7 +1137,7 @@
         "alpha2": "GL",
         "name": "Greenland",
         "type": "country",
-        "bounds": "-101.882,54.77,-0.013,83.658",
+        "bounds": "14.11003502711327,83.72458758445453,-96.50140242321076,59.69242052933558",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
@@ -1207,6 +1209,7 @@
         "alpha2": "HM",
         "name": "Heard Island and McDonald Islands",
         "type": "country",
+        "size": "xs",
         "bounds": "72.583,-53.195,73.873,-52.902",
         "available_resources": [
             "Solar PV",
@@ -1484,6 +1487,7 @@
         "name": "Kiribati",
         "type": "country",
         "bounds": "-179.1645388,-7.0516717,-164.1645388,7.9483283",
+        "offshore_bounds": "172.9,-20.6,208.2,12",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
@@ -2095,7 +2099,9 @@
         "alpha2": "NZ",
         "name": "New Zealand",
         "type": "country",
-        "bounds": "-178.827,-52.621,179.066,-29.232",
+        "merged_exist": true,
+        "bounds": "158.3545391486304,-52.610654570734944,190.6750212979939,-29.93619873949896",
+        "offshore_bounds": "157.3699031246499,-52.59354708370475,190.36923493048778,-27.67163206921571",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
@@ -2864,6 +2870,7 @@
         "name": "United States",
         "type": "country",
         "bounds": "-187.56388855,18.91027832,-66.94889069,72.68541718",
+        "offshore_bounds": "-131.3,12.1,-62.8,54.8",
         "available_resources": [
             "Solar PV",
             "Onshore Wind",
