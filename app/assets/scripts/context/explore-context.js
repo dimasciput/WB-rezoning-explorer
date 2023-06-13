@@ -9,7 +9,10 @@ import useQsState from '../utils/qs-state-hook';
 import config from '../config';
 import areasJson from '../../data/areas.json';
 import { initialApiRequestState } from './contexeed';
-import { fetchZonesReducer, fetchZones } from './reducers/zones';
+import {
+  fetchZonesReducer,
+  fetchZones,
+} from './reducers/zones';
 
 import {
   showGlobalLoadingMessage,
@@ -265,10 +268,19 @@ export function ExploreProvider (props) {
     let nextArea = areas.find((a) => `${a.id}` === `${selectedAreaId}`);
 
     if (selectedResource === 'Off-Shore Wind' && nextArea) {
-      const initBounds = bboxPolygon(nextArea.bounds);
-      const eezs = nextArea.eez ? nextArea.eez : [];
-      const fc = featureCollection([initBounds, ...eezs]);
-      const newBounds = bbox(fc);
+      let newBounds = null;
+      try {
+        if (nextArea.offshore_bounds) {
+          newBounds = nextArea.offshore_bounds.split(',').map((x) => parseFloat(x));
+        }
+      } catch (e) {
+      }
+      if (!newBounds) {
+        const initBounds = bboxPolygon(nextArea.bounds);
+        const eezs = nextArea.eez ? nextArea.eez : [];
+        const fc = featureCollection([initBounds, ...eezs]);
+        newBounds = bbox(fc);
+      }
       nextArea = {
         ...nextArea,
         bounds: newBounds
@@ -383,14 +395,14 @@ export function ExploreProvider (props) {
       })
       .filter((x) => x)
       .join('&');
-    
-    setFilterString( filterString );
+
+    setFilterString(filterString);
     return filterString;
-  }
+  };
 
   const updateFilteredLayer = (filterValues, weights, lcoe) => {
 
-    let filterString = updateFilterString( filterValues );
+    const filterString = updateFilterString(filterValues);
 
     // If area of country type, prepare country path string to add to URL
     const countryPath = `${selectedArea.id}/`;
