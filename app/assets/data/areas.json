@@ -1507,6 +1507,7 @@
         "gid": "KIR",
         "alpha2": "KI",
         "name": "Kiribati",
+        "area": 30,
         "type": "country",
         "bounds": "-179.1645388,-7.0516717,-164.1645388,7.9483283",
         "offshore_bounds": "172.9,-20.6,208.2,12",
